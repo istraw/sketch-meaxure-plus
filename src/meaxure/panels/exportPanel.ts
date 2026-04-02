@@ -57,7 +57,7 @@ interface ExportConfig {
 
 export function exportPanel(): Promise<ExportConfig> {
     let panel = createWebviewPanel({
-        identifier: 'co.jebbs.sketch-meaxure.export',
+        identifier: 'com.istraw.sketch-hmeaxure.export',
         url: getResourcePath() + "/panel/export.html",
         width: 320,
         height: 597,

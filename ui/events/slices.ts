@@ -1,9 +1,11 @@
+import { state } from "../common";
 import { clickElement } from "./helper";
 import { message } from "../render/helper";
 import { localize } from "../common";
 import { eventDelegate } from "./delegate";
 
 export function sliceEvents() {
+    sliceBoundsSwitchEvents();
     let slices = document.querySelector('#slices') as HTMLDivElement;
     eventDelegate(slices, 'mouseover', 'li', function (event) {
         document.querySelectorAll('.layer-' + this.dataset.objectid)
@@ -38,5 +40,17 @@ export function sliceEvents() {
         viewer.scrollLeft = (offsets.left + scrolls.left) - ((viewerSizes.width - sizes.width) / 2);
         viewer.scrollTop = (offsets.top + scrolls.top - 60) - ((viewerSizes.height - sizes.height) / 2);
         clickElement(instance);
+    });
+}
+
+function sliceBoundsSwitchEvents() {
+    let input = document.querySelector('#show-slice-bounds') as HTMLInputElement;
+    if (!input) return;
+    input.checked = state.showSliceBounds;
+    input.addEventListener('change', function () {
+        state.showSliceBounds = this.checked;
+        let layers = document.querySelector('#layers');
+        if (!layers) return;
+        layers.classList.toggle('show-slice-bounds', state.showSliceBounds);
     });
 }

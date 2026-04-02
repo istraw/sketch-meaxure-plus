@@ -3,10 +3,12 @@
 // license that can be found in the LICENSE file.
 
 import { getResourcePath } from "../helpers/helper";
+import { sketch } from "../../sketch";
 
 let aliases = {
     "zh-Hans": "zh-cn",
-    "zh-Hant": "zh-tw"
+    "zh-Hant": "zh-tw",
+    "en": "en"
 }
 
 let caches: { [key: string]: Object } = {};
@@ -17,7 +19,7 @@ export function getLanguage(): Object | null {
 
 export function getAllLanguage(): { [key: string]: Object } {
     let all: { [key: string]: Object } = {}
-    for (let v of Object.values(aliases)) {
+    for (let v of Array.from(new Set(Object.values(aliases)))) {
         let lang = loadLanguage(v);
         if (lang) all[v] = lang;
     }
@@ -49,7 +51,10 @@ function loadLanguage(code: string): Object | null {
     return caches[code] = JSON.parse(language);
 }
 
-function getLangCode(): string {
+export function getLangCode(): string {
+    let configured = getConfiguredLangCode();
+    if (configured) return configured;
+
     let sysLanguage = String(NSUserDefaults.standardUserDefaults().objectForKey("AppleLanguages").objectAtIndex(0)).toLowerCase();
     for (let key of Object.keys(aliases)) {
         let lkey = key.toLowerCase();
@@ -58,4 +63,12 @@ function getLangCode(): string {
         }
     }
     return "";
+}
+
+function getConfiguredLangCode(): string {
+    let document = NSDocumentController.sharedDocumentController().currentDocument();
+    if (!document) return "";
+    let value = sketch.Settings.documentSettingForKey<string>(document, 'language');
+    if (!value || value === 'auto') return "";
+    return String(value).toLowerCase();
 }

@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file.
 
 import { sketch } from "..";
+import { callNative, hasNativeMethod } from "../compat";
 import { alignLayers, alignLayersByPosition } from "./alignment";
 import { Edge, EdgeVertical } from "./alignment";
 import { getResizingConstraint, setResizingConstraint } from "./resizingConstraint";
@@ -36,8 +37,19 @@ export function extendLayer() {
             } else {
                 parent = (this as Layer).parent as Group;
             }
-            let parentRect = parent.sketchObject.absoluteRect().rect();
-            let influenceCGRect = this.sketchObject.absoluteInfluenceRect();
+            let parentAbsoluteRect = hasNativeMethod(parent.sketchObject, "absoluteRect") ?
+                callNative<any>(parent.sketchObject, "absoluteRect", undefined) :
+                undefined;
+            let parentRect = parentAbsoluteRect ?
+                parentAbsoluteRect.rect() :
+                NSMakeRect(parent.frame.x, parent.frame.y, parent.frame.width, parent.frame.height);
+            let influenceCGRect = hasNativeMethod(this.sketchObject, "absoluteInfluenceRect") ?
+                callNative<any>(this.sketchObject, "absoluteInfluenceRect", undefined) :
+                undefined;
+            if (!influenceCGRect) {
+                let absoluteRect = callNative<any>(this.sketchObject, "absoluteRect", undefined);
+                influenceCGRect = absoluteRect ? absoluteRect.rect() : NSMakeRect(this.frame.x, this.frame.y, this.frame.width, this.frame.height);
+            }
             return new sketch.Rectangle(
                 influenceCGRect.origin.x - parentRect.origin.x,
                 influenceCGRect.origin.y - parentRect.origin.y,
@@ -48,25 +60,29 @@ export function extendLayer() {
     });
     Object.defineProperty(target, "shouldBreakMaskChain", {
         get: function (): boolean {
-            return !!this.sketchObject.shouldBreakMaskChain();
+            return !!callNative(this.sketchObject, "shouldBreakMaskChain", false);
         }
     });
     Object.defineProperty(target, "hasClippingMask", {
         get: function (): boolean {
-            return !!this.sketchObject.hasClippingMask();
+            return !!callNative(this.sketchObject, "hasClippingMask", false);
         }
     });
     Object.defineProperty(target, "CSSAttributes", {
         get: function () {
-            let layerCSSAttributes = this.sketchObject.CSSAttributes();
+            let layerCSSAttributes = callNative<any>(this.sketchObject, "CSSAttributes", []);
             let css = [];
-            for (let i = 0; i < layerCSSAttributes.count(); i++) {
-                let attribute = new String(layerCSSAttributes[i]).toString();
-                css.push(attribute);
+            if (layerCSSAttributes && layerCSSAttributes.count) {
+                for (let i = 0; i < layerCSSAttributes.count(); i++) {
+                    let attribute = new String(layerCSSAttributes[i]).toString();
+                    css.push(attribute);
+                }
             }
             if (this.sketchObject.font && this.sketchObject.font()) {
                 const fontWeightCss = `font-weight: ${AppKitWeightToCssWeightIndex[Number(NSFontManager.sharedFontManager().weightOfFont(this.sketchObject.font()))]};`;
                 css.push(fontWeightCss);
+            } else if (this.style && this.style.fontWeight) {
+                css.push(`font-weight: ${this.style.fontWeight};`);
             }
             return css;
         }

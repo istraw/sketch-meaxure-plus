@@ -13,6 +13,7 @@ import { keyboardZoomEvents } from "./keyboard/zoom";
 import { flowEvents } from "./flow";
 import { hashChangeEvents } from "./hashChange";
 import { keyboardSwitchEvents } from "./keyboard/switch";
+import { colorEvents } from "./colors";
 
 export function events() {
     layerEvents();
@@ -30,5 +31,5 @@ export function events() {
     flowEvents();
     keyboardSwitchEvents();
     hashChangeEvents();
+    colorEvents();
 }
-

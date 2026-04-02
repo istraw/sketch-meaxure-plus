@@ -11,13 +11,16 @@ export function layers() {
 function specLayers() {
     let layersHTML = [];
     state.current.layers.forEach((layer, index) => {
-        if (layer.type == SMType.group || layer.type == SMType.hotspot) return;
+        if (layer.type == SMType.group && !layer.isStackLayout) return;
+        if (layer.type == SMType.group && layer.isStackLayout && !hasInspectableStackStyle(layer)) return;
+        if (layer.type == SMType.hotspot) return;
         let x = zoomSize(layer.rect.x);
         let y = zoomSize(layer.rect.y);
         let width = zoomSize(layer.rect.width);
         let height = zoomSize(layer.rect.height);
         let classNames = ['layer'];
         classNames.push('layer-' + layer.objectID);
+        if (layer.exportable && layer.exportable.length) classNames.push('slice-bounds');
         if (state.selectedIndex == index) classNames.push('selected');
         layersHTML.push([`
 <div id="layer-${index}" 
@@ -28,11 +31,18 @@ function specLayers() {
     data-height="${unitSize(layer.rect.height)}" 
     style="left: ${x}px; top: ${y}px; width: ${width}px; height: ${height}px;"
 >
+    <em class="slice-range-frame"></em>
     <i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i>
     <b class="et h"></b><b class="er v"></b><b class="eb h"></b><b class="el v"></b>
 </div>`].join(''));
     });
-    document.querySelector('#layers').innerHTML = layersHTML.join('');
+    let layers = document.querySelector('#layers');
+    layers.innerHTML = layersHTML.join('');
+    layers.classList.toggle('show-slice-bounds', state.showSliceBounds);
+}
+
+function hasInspectableStackStyle(layer: any): boolean {
+    return !!((layer.fills && layer.fills.length) || (layer.borders && layer.borders.length));
 }
 
 function flowLayers() {

@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file.
 
 import { sketch } from ".";
+import { callNative, hasNativeMethod } from "./compat";
 
 declare module 'sketch/sketch' {
     namespace _Sketch {
@@ -16,8 +17,8 @@ export function extendShapePath() {
     let target = sketch.ShapePath.prototype
     Object.defineProperty(target, "radius", {
         get: function (): number[] {
-            if (!this.sketchObject.cornerRadiusString) return undefined;
-            let cornerRadius = this.sketchObject.cornerRadiusString();
+            if (!hasNativeMethod(this.sketchObject, "cornerRadiusString")) return undefined;
+            let cornerRadius = callNative<string>(this.sketchObject, "cornerRadiusString", undefined);
             if (!cornerRadius) return undefined;
             return cornerRadius.split(';').map(Number);
         }

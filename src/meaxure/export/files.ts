@@ -4,26 +4,33 @@
 
 import { SMExportFormat } from "../interfaces";
 import { sketch } from "../../sketch";
+import { ensureDirectory, fileExists } from "../../sketch/compat";
 import { context } from "../common/context";
 import { toJSString } from "../helpers/helper";
 
 export function exportImage(layer: Layer, format: SMExportFormat, path: string, name: string) {
-    let document = context.sketchObject.document;
-    let slice = MSExportRequest.exportRequestsFromExportableLayer(layer.sketchObject).firstObject();
-    let savePath = [
-        path,
-        "/",
-        format.prefix,
+    ensureDirectory(path);
+    let fileName = [
+        format.prefix || "",
         name,
-        format.suffix,
+        format.suffix || "",
         ".",
         format.format
     ].join("");
+    let savePath = [path, "/", fileName].join("");
 
-    slice.scale = format.scale;
-    slice.format = format.format;
+    sketch.export(layer, {
+        output: path,
+        formats: format.format,
+        scales: String(format.scale),
+        filename: fileName,
+        overwriting: true,
+        suffixing: false,
+    });
 
-    document.saveArtboardOrSlice_toFile(slice, savePath);
+    if (!fileExists(savePath)) {
+        throw new Error(`Exported image not found at path: ${savePath}`);
+    }
     return savePath;
 }
 
@@ -45,9 +52,7 @@ export function writeFile(options) {
     let content = NSString.stringWithString(options.content),
         savePathName = [];
 
-    NSFileManager
-        .defaultManager()
-        .createDirectoryAtPath_withIntermediateDirectories_attributes_error(options.path, true, nil, nil);
+    ensureDirectory(options.path);
 
     savePathName.push(
         options.path,

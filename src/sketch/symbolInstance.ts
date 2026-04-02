@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file.
 
 import { sketch } from ".";
+import { callNative } from "./compat";
 
 declare module 'sketch/sketch' {
     namespace _Sketch {
@@ -15,7 +16,7 @@ declare module 'sketch/sketch' {
 export function extendSymbolInstance() {
     let target = sketch.SymbolInstance.prototype
     target.changeSymbolMaster = function (master: SymbolMaster): SymbolInstance {
-        this.sketchObject.changeInstanceToSymbol(master.sketchObject);
+        callNative(this.sketchObject, "changeInstanceToSymbol", undefined, master.sketchObject);
         return this;
     }
 }

@@ -7,6 +7,7 @@ let requested: { [key: string]: boolean } = {};
 
 export function coscriptKeepAround(requestID) {
     if (!requestID) throw 'requestID is needed for setShouldKeepAround';
+    if (typeof coscript === 'undefined' || !coscript.setShouldKeepAround) return;
     if (!globalShouldKeepAround) {
         coscript.setShouldKeepAround(true);
         globalShouldKeepAround = true;
@@ -17,6 +18,7 @@ export function coscriptKeepAround(requestID) {
 
 export function coscriptNotKeepAround(requestID) {
     if (!requestID) throw 'requestID is needed for setShouldKeepAround';
+    if (typeof coscript === 'undefined' || !coscript.setShouldKeepAround) return;
     if (!requested[requestID]) return;
     delete requested[requestID];
     if (!Object.keys(requested).length && globalShouldKeepAround) {

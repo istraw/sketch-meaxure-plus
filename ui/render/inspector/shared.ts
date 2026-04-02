@@ -3,10 +3,13 @@ import { localize, project } from "../../common";
 import { SMColor } from "../../../src/meaxure/interfaces";
 export function colorItem(color: SMColor): string {
     var colorName = (project.colorNames) ? project.colorNames[color['argb-hex']] : '';
-    colorName = (colorName) ? ' data-name="' + colorName + '"' : '';
+    var colorNameHTML = colorName
+        ? '<div class="color-name"><input data-copy-value="' + colorName + '" type="text" value="' + colorName + '" readonly="readonly"></div>'
+        : '';
     return [
-        '<div class="color"' + colorName + '>',
+        '<div class="color">',
         '<label><em><i style="background-color:' + color['css-rgba'] + ';"></i></em></label><input data-color="' + encodeURI(JSON.stringify(color)) + '" type="text" value="' + color[state.colorFormat] + '" readonly="readonly">',
+        colorNameHTML,
         '</div>'
     ].join('');
 }

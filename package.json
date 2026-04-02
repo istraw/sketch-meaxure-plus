@@ -1,42 +1,44 @@
 {
-  "name": "sketch-meaxure",
+  "name": "sketch-hmeaxure",
   "description": "Make it a fun to create spec for developers and teammates",
-  "version": "3.3.4",
+  "version": "2026.0.0",
   "engines": {
     "sketch": ">=69.0"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/qjebbs/sketch-meaxure.git"
+    "url": "git+https://github.com/istraw/sketch-hmeaxure.git"
   },
   "skpm": {
-    "name": "Sketch MeaXure",
+    "name": "Sketch hMeaXure ",
     "manifest": "src/manifest.json",
-    "homepage": "https://github.com/qjebbs",
+    "homepage": "https://github.com/istraw/sketch-hmeaxure",
     "appcast": "appcast.xml",
-    "main": "sketch-meaxure.sketchplugin",
+    "main": "sketch-hmeaxure.sketchplugin",
     "assets": [
       "resources/**/*"
     ]
   },
   "scripts": {
-    "build": "node scripts/buildTmpl.js && skpm-build",
-    "watch": "export DEBUG=1; skpm-build --watch",
-    "start": "export DEBUG=1; skpm-build --watch --run",
+    "build": "export NODE_OPTIONS=--openssl-legacy-provider; node scripts/buildTmpl.js && skpm-build",
+    "watch": "export DEBUG=1 NODE_OPTIONS=--openssl-legacy-provider; skpm-build --watch",
+    "start": "export DEBUG=1 NODE_OPTIONS=--openssl-legacy-provider; skpm-build --watch --run",
     "postinstall": "npm run build && skpm-link",
     "tmpl": "export DEBUG=1; node scripts/buildTmpl.js",
     "play": "node scripts/playground.js"
   },
   "devDependencies": {
     "@skpm/builder": "^0.7.0",
-    "@types/sketch": "git+https://github.com/qjebbs/sketch.d.ts.git",
+    "cocoascript-types": "^0.2.0",
+    "sketch-internal-types": "^97.0.0",
+    "sketch-types": "^1.4.5",
     "skpm": "^1.3.1",
     "ts-loader": "^6.2.1",
     "tslint": "^5.20.1",
     "typescript": "^3.7.4",
     "webpack": "^4.44.2"
   },
-  "author": "utom & jebbs <qjebbs@gmail.com>",
+  "author": " utom & jebbs & istraw",
   "dependencies": {
     "@skpm/path": "^0.1.4"
   }

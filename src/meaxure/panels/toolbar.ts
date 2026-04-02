@@ -40,7 +40,7 @@ const workers = {
 
 export function markToolbar() {
     let panel = createWebviewPanel({
-        identifier: 'co.jebbs.sketch-meaxure.toolbar',
+        identifier: 'com.istraw.sketch-hmeaxure.toolbar',
         url: getResourcePath() + "/panel/toolbar.html",
         acceptsFirstMouse: true,
         width: 120,
@@ -65,4 +65,3 @@ export function markToolbar() {
     });
     panel.show();
 }
-

@@ -2,6 +2,8 @@
 // Use of this source code is governed by the MIT
 // license that can be found in the LICENSE file.
 
+import { callNative } from "../compat";
+
 export enum ResizingConstraint {
     top = 0b011111,
     left = 0b111011,
@@ -12,8 +14,8 @@ export enum ResizingConstraint {
 }
 
 export function setResizingConstraint(layer: Layer, constraint: number) {
-    layer.sketchObject.setResizingConstraint(constraint);
+    callNative(layer.sketchObject, "setResizingConstraint", undefined, constraint);
 }
 export function getResizingConstraint(layer: Layer): number {
-    return Number(layer.sketchObject.resizingConstraint());
+    return Number(callNative(layer.sketchObject, "resizingConstraint", 0));
 }

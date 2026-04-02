@@ -33,6 +33,12 @@ export class ConfigsMaster {
     set format(value: string) {
         this._setDocumentSetting<string>('format', value);
     }
+    get language(): string {
+        return this._readDocumentSetting<string>('language', "auto");
+    }
+    set language(value: string) {
+        this._setDocumentSetting<string>('language', value);
+    }
     get properties(): string[] {
         return this._readSessionVariable<string[]>('properties', []);
     }

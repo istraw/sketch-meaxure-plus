@@ -3,6 +3,7 @@
 // license that can be found in the LICENSE file.
 
 import { sketch } from "..";
+import { callNative, hasNativeMethod } from "../compat";
 import { TextFragment, getFragments, getFragmentsCount } from "./textFragment";
 
 export enum TextBehaviour {
@@ -26,16 +27,20 @@ export function extendText() {
     let target = sketch.Text.prototype
     Object.defineProperty(target, "isEmpty", {
         get: function () {
-            return this.sketchObject.isEmpty();
+            if (hasNativeMethod(this.sketchObject, "isEmpty")) return callNative(this.sketchObject, "isEmpty", false);
+            return !this.text || !String(this.text).length;
         }
     });
     Object.defineProperty(target, "textBehaviour", {
         get: function () {
-            let val = this.sketchObject.textBehaviour();
+            let val = callNative(this.sketchObject, "textBehaviour", TextBehaviour.fixedSize);
             return TextBehaviour[val];
         },
         set: function (val: TextBehaviour) {
-            return this.sketchObject.setTextBehaviour(val);
+            if (hasNativeMethod(this.sketchObject, "setTextBehaviour")) {
+                return callNative(this.sketchObject, "setTextBehaviour", val, val);
+            }
+            return val;
         }
     });
     target.getFragments = function () { return getFragments(this) };

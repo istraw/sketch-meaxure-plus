@@ -5,6 +5,7 @@
 import { WebviewPanel } from ".";
 
 export function dispatchFirstClick(panel: WebviewPanel, event: any) {
+    if (!event || !panel || !panel.webview || !panel.panel) return;
     if (event.type() !== NSEventTypeLeftMouseDown) return;
     let point = panel.webview.convertPoint_fromView(event.locationInWindow(), null)
     point.y = NSHeight(panel.panel.contentView().frame()) - point.y;

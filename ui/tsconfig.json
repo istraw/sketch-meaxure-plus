@@ -6,6 +6,14 @@
         "sourceMap": true,
         "rootDir": ".",
         "noEmitOnError": true,
+        "typeRoots": [
+            "../src/@custom_types",
+            "../node_modules/@types"
+        ],
+        "types": [
+            "node",
+            "sketch"
+        ]
     },
     "exclude": [
         "node_modules",

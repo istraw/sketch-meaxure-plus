@@ -21,6 +21,7 @@ compiler.run((err, stats) => {
     }
     let template = makeTemplate(outputFileSystem, __dirname + '/index.js');
     let templatePath = path.resolve(skpmConfig.main, 'Contents', 'Resources', 'template.html');
+    fs.mkdirSync(path.dirname(templatePath), { recursive: true });
     fs.writeFileSync(templatePath, template);
 });
 
@@ -46,7 +47,12 @@ function getCommonConfig() {
         module: {
             rules: [{
                 test: /\.tsx?$/,
-                use: 'ts-loader',
+                use: {
+                    loader: 'ts-loader',
+                    options: {
+                        transpileOnly: true,
+                    }
+                },
                 exclude: /node_modules/
             }]
         },

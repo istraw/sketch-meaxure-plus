@@ -27,7 +27,7 @@ export function renderFont(layerData: LayerData): string {
         '</div>'
     ].join(''), content = [
         '<div class="item">',
-        '<label data-label="' + localize('Content') + '"><textarea id="content" rows="2" readonly="readonly" style="font-family: ' + layerData.fontFace + ', sans-serif">' + layerData.content + '</textarea></label>',
+        '<label data-label="' + localize('Content') + '"><textarea id="content" rows="2" readonly="readonly">' + layerData.content + '</textarea></label>',
         '</div>'
     ].join('');
     return propertyType('TYPEFACE', [fontFamily, textColor, fontSize, spacing, content].join(''));

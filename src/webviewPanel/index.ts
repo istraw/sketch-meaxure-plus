@@ -22,6 +22,19 @@ interface Webview {
     mainFrameURL();
 }
 
+function safeNativeCall<T>(fn: () => T, fallback?: T): T {
+    try {
+        return fn();
+    } catch (error) {
+        logger.log(3, 'Ignore webview native error.', error);
+        return fallback;
+    }
+}
+
+function getWindowObject(webview: Webview): any {
+    return safeNativeCall(() => webview && webview.windowScriptObject ? webview.windowScriptObject() : undefined, undefined);
+}
+
 interface PanelMessageBase<T> {
     __MESSAGE_TYPE__: string;
     __MESSAGE_SUCCESS__?: boolean;
@@ -91,11 +104,11 @@ export class WebviewPanel {
      */
     close() {
         if (this._isModal) {
-            this._panel.orderOut(nil);
-            NSApp.stopModal();
+            safeNativeCall(() => this._panel.orderOut(nil));
+            safeNativeCall(() => NSApp.stopModal());
             return;
         }
-        this._panel.close();
+        safeNativeCall(() => this._panel.close());
         // afterClose will be called by windowWillClose delegte
         // this.afterClose() 
     }
@@ -115,17 +128,17 @@ export class WebviewPanel {
      */
     showModal() {
         this._isModal = true;
-        NSApp.runModalForWindow(this._panel);
+        safeNativeCall(() => NSApp.runModalForWindow(this._panel));
     }
     /**
      * Show panel
      */
     show() {
         this._isModal = false;
-        this._panel.becomeKeyWindow();
-        this._panel.setLevel(NSFloatingWindowLevel);
-        this._panel.center();
-        this._panel.makeKeyAndOrderFront(nil);
+        safeNativeCall(() => this._panel.becomeKeyWindow());
+        safeNativeCall(() => this._panel.setLevel(NSFloatingWindowLevel));
+        safeNativeCall(() => this._panel.center());
+        safeNativeCall(() => this._panel.makeKeyAndOrderFront(nil));
         coscriptKeepAround(this._keepAroundID);
     }
     /**
@@ -150,14 +163,18 @@ export class WebviewPanel {
      * @param script the script to run
      */
     evaluateWebScript<T>(script: string): Promise<T> {
-        let windowObject = this._webview.windowScriptObject();
+        let windowObject = getWindowObject(this._webview);
         let requestID = uuidv4();
         let scriptWrapped = wrapWebViewScripts(script, requestID);
         // alert(scriptWrapped);
         let promise = new Promise<T>((resolve, reject) => {
             this._registerReplyListener(requestID, resolve, reject);
         });
-        windowObject.evaluateWebScript(scriptWrapped);
+        if (!windowObject) {
+            rejectMissingWindowObject(this._replyListeners, requestID);
+            return promise;
+        }
+        safeNativeCall(() => windowObject.evaluateWebScript(scriptWrapped));
         return promise;
     }
     /**
@@ -188,24 +205,37 @@ export class WebviewPanel {
         let frame = NSMakeRect(0, 0, this._options.width, (this._options.height + TITLE_HEIGHT));
         let panel = NSPanel.alloc().init();
         // panel.setTitleVisibility(NSWindowTitleHidden);
-        panel.setTitlebarAppearsTransparent(true);
-        panel.standardWindowButton(NSWindowCloseButton).setHidden(this._options.hideCloseButton);
-        panel.standardWindowButton(NSWindowMiniaturizeButton).setHidden(true);
-        panel.standardWindowButton(NSWindowZoomButton).setHidden(true);
-        panel.setFrame_display(frame, false);
-        panel.setBackgroundColor(BACKGROUND_COLOR);
+        safeNativeCall(() => panel.setTitlebarAppearsTransparent(true));
+        if (panel.standardWindowButton(NSWindowCloseButton)) {
+            panel.standardWindowButton(NSWindowCloseButton).setHidden(this._options.hideCloseButton);
+        }
+        if (panel.standardWindowButton(NSWindowMiniaturizeButton)) {
+            panel.standardWindowButton(NSWindowMiniaturizeButton).setHidden(true);
+        }
+        if (panel.standardWindowButton(NSWindowZoomButton)) {
+            panel.standardWindowButton(NSWindowZoomButton).setHidden(true);
+        }
+        safeNativeCall(() => panel.setFrame_display(frame, false));
+        safeNativeCall(() => panel.setBackgroundColor(BACKGROUND_COLOR));
 
         let contentView = panel.contentView();
-        let titlebarView = contentView.superview().titlebarViewController().view();
-        let titlebarContainerView = titlebarView.superview();
-        titlebarContainerView.setFrame(NSMakeRect(0, this._options.height, this._options.width, TITLE_HEIGHT));
-        titlebarView.setFrameSize(NSMakeSize(this._options.width, TITLE_HEIGHT));
-        titlebarView.setTransparent(true);
-        titlebarView.setBackgroundColor(BACKGROUND_COLOR_TITLE);
-        titlebarContainerView.superview().setBackgroundColor(BACKGROUND_COLOR_TITLE);
+        let titlebarController = contentView && contentView.superview && contentView.superview().titlebarViewController ?
+            contentView.superview().titlebarViewController() :
+            undefined;
+        let titlebarView = titlebarController && titlebarController.view ? titlebarController.view() : undefined;
+        let titlebarContainerView = titlebarView && titlebarView.superview ? titlebarView.superview() : undefined;
+        if (titlebarContainerView && titlebarView) {
+            safeNativeCall(() => titlebarContainerView.setFrame(NSMakeRect(0, this._options.height, this._options.width, TITLE_HEIGHT)));
+            safeNativeCall(() => titlebarView.setFrameSize(NSMakeSize(this._options.width, TITLE_HEIGHT)));
+            if (titlebarView.setTransparent) titlebarView.setTransparent(true);
+            if (titlebarView.setBackgroundColor) titlebarView.setBackgroundColor(BACKGROUND_COLOR_TITLE);
+            if (titlebarContainerView.superview && titlebarContainerView.superview()) {
+                titlebarContainerView.superview().setBackgroundColor(BACKGROUND_COLOR_TITLE);
+            }
+        }
 
         let closeButton = panel.standardWindowButton(NSWindowCloseButton);
-        closeButton.setFrameOrigin(NSMakePoint(8, 4));
+        if (closeButton) safeNativeCall(() => closeButton.setFrameOrigin(NSMakePoint(8, 4)));
         // https://github.com/skpm/sketch-module-web-view/blob/master/lib/set-delegates.js#L97
         let delegate = new MochaJSDelegate({
             'windowWillClose:': (sender) => {
@@ -217,17 +247,18 @@ export class WebviewPanel {
                 dispatchFirstClick(this, event);
             },
         });
-        panel.setDelegate(delegate.getClassInstance())
+        safeNativeCall(() => panel.setDelegate(delegate.getClassInstance()))
 
         return panel;
     }
     private _createWebview(): Webview {
         let webView = WebView.alloc().initWithFrame(NSMakeRect(0, 0, this._options.width, this._options.height));
-        let windowObject = webView.windowScriptObject();
+        let windowObject = getWindowObject(webView);
         let delegate = new MochaJSDelegate({
             // https://developer.apple.com/documentation/webkit/webframeloaddelegate?language=objc
             "webView:didCommitLoadForFrame:": (webView, webFrame) => {
-                windowObject.evaluateWebScript(meaxure);
+                if (!windowObject) return;
+                safeNativeCall(() => windowObject.evaluateWebScript(meaxure));
             },
             "webView:didFinishLoadForFrame:": (webView, webFrame) => {
                 if (this._DOMReadyListener) {
@@ -235,13 +266,16 @@ export class WebviewPanel {
                 }
             },
             "webView:didChangeLocationWithinPageForFrame:": (webView, webFrame) => {
-                let data = JSON.parse(windowObject.valueForKey("_MeaxurePostedData"));
+                if (!windowObject) return;
+                let raw = safeNativeCall(() => windowObject.valueForKey("_MeaxurePostedData"), undefined);
+                if (!raw) return;
+                let data = JSON.parse(raw);
                 this._dispatchMessage(data);
             }
         });
-        webView.setBackgroundColor(BACKGROUND_COLOR);
-        webView.setFrameLoadDelegate_(delegate.getClassInstance());
-        webView.setMainFrameURL_(this._options.url);
+        safeNativeCall(() => webView.setBackgroundColor(BACKGROUND_COLOR));
+        safeNativeCall(() => webView.setFrameLoadDelegate_(delegate.getClassInstance()));
+        safeNativeCall(() => webView.setMainFrameURL_(this._options.url));
         return webView;
     }
     private _dispatchMessage(data: any): void {
@@ -277,18 +311,21 @@ export class WebviewPanel {
     }
     private _initPanelViews(panel, webView) {
         let contentView = panel.contentView();
-        contentView.setWantsLayer(true);
-        contentView.layer().setFrame(contentView.frame());
-        contentView.layer().setCornerRadius(6);
-        contentView.layer().setMasksToBounds(true);
-        contentView.addSubview(webView);
+        safeNativeCall(() => contentView.setWantsLayer(true));
+        if (contentView.layer && contentView.layer()) {
+            safeNativeCall(() => contentView.layer().setFrame(contentView.frame()));
+            safeNativeCall(() => contentView.layer().setCornerRadius(6));
+            safeNativeCall(() => contentView.layer().setMasksToBounds(true));
+        }
+        safeNativeCall(() => contentView.addSubview(webView));
     }
     private _postData<T>(data: T): void {
-        let windowObject = this._webview.windowScriptObject();
+        let windowObject = getWindowObject(this._webview);
+        if (!windowObject) return;
         let script = `
             meaxure.raiseReceiveMessageEvent("${encodeURIComponent(JSON.stringify(data))}");
         `
-        windowObject.evaluateWebScript(script);
+        safeNativeCall(() => windowObject.evaluateWebScript(script));
     }
     private _replyRequest<T>(request: PanelClientMessage<any>, success: boolean, response: T) {
         return this._postData(<PanelClientMessage<any>>{
@@ -322,6 +359,13 @@ export class WebviewPanel {
             delete this._replyListeners[requestID];
         }, 10000);
     }
+}
+
+function rejectMissingWindowObject(listeners, requestID: string) {
+    let callback = listeners[requestID];
+    if (!callback) return;
+    callback(false, 'Webview window object is unavailable.');
+    delete listeners[requestID];
 }
 function _tryCatchListener(fn: Function) {
     return function (...args): void {

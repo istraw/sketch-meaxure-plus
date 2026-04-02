@@ -12,6 +12,10 @@
         "typeRoots": [
             "node_modules/@types",
             "src/@custom_types"
+        ],
+        "types": [
+            "node",
+            "sketch"
         ]
     },
     "exclude": [

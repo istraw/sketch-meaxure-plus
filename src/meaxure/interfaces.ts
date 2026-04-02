@@ -82,6 +82,7 @@ export interface LayerData {
     // shared
     objectID: string,
     type: SMType,
+    isStackLayout?: boolean,
     name: string,
     rect: SMRect,
     // slice
@@ -140,6 +141,7 @@ export interface ExportData {
      */
     resolution: number,
     unit: string,
+    language?: string,
     colorFormat: string,
     artboards: ArtboardData[],
     slices: any[],
