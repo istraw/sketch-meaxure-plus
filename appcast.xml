@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Sketch MeaXure</title>
+    <link>https://raw.githubusercontent.com/qjebbs/sketch-meaxure/master/appcast.xml</link>
+    <description>Make it a fun to create spec for developers and teammates</description>
+    <language>en</language>
+    <item>
+      <enclosure url="https://github.com/qjebbs/sketch-meaxure/releases/download/v3.3.4/sketch-meaxure.sketchplugin.zip" sparkle:version="3.3.4"/>
+    </item>
+    <item>
+      <enclosure url="https://github.com/qjebbs/sketch-meaxure/releases/download/v3.3.2/sketch-meaxure.sketchplugin.zip" sparkle:version="3.3.2"/>
+    </item>
+    <item>
+      <enclosure url="https://github.com/qjebbs/sketch-meaxure/releases/download/v3.3.1/sketch-meaxure.sketchplugin.zip" sparkle:version="3.3.1"/>
+    </item>
+    <item>
+      <enclosure url="https://github.com/qjebbs/sketch-meaxure/releases/download/v3.3.0/sketch-meaxure.sketchplugin.zip" sparkle:version="3.3.0"/>
+    </item>
+    <item>
+      <enclosure url="https://github.com/qjebbs/sketch-meaxure/releases/download/v3.2.11/sketch-meaxure.sketchplugin.zip" sparkle:version="3.2.11"/>
+    </item>
+    <item>
+      <title>Changelog</title>
+      <description>
+        New: Rewrite export template with TypeScript.
+        New: Prototype flow support.
+        Improvement: Use small preview in artboard list, avoid lagging
+        Improvement: keep viewport position after zoom
+        Improvement: New scale and unit switch logic
+        Fix: A bug exporting masked layers
+        Fix: Another fragments export bug, #36
+			</description>
+      <enclosure url="" sparkle:version="3.1.0" type="application/octet-stream"/>
+    </item>
+  </channel>
+</rss>

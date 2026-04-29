@@ -1,0 +1,154 @@
+{
+  "$schema": "https://raw.githubusercontent.com/sketch-hq/SketchAPI/develop/docs/sketch-plugin-manifest-schema.json",
+  "icon": "icon.png",
+  "commands": [
+    {
+      "name": "Toolbar",
+      "identifier": "commandToolbar",
+      "shortcut": "ctrl shift b",
+      "handler": "commandToolbar",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Mark Overlay",
+      "identifier": "commandOverlays",
+      "shortcut": "ctrl shift 1",
+      "handler": "commandOverlays",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Mark Sizes",
+      "identifier": "commandSizes",
+      "shortcut": "ctrl shift 2",
+      "handler": "commandSizes",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Mark Spacings",
+      "identifier": "commandSpacings",
+      "shortcut": "ctrl shift 3",
+      "handler": "commandSpacings",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Mark Properties",
+      "identifier": "commandProperties",
+      "shortcut": "ctrl shift 4",
+      "handler": "commandProperties",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Mark Note",
+      "identifier": "commandNote",
+      "shortcut": "ctrl shift 5",
+      "handler": "commandNote",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Mark Coordinate",
+      "identifier": "commandCoordinate",
+      "shortcut": "ctrl shift 6",
+      "handler": "commandCoordinate",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Spec Export",
+      "identifier": "commandExport",
+      "shortcut": "ctrl shift e",
+      "handler": "commandExport",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Toggle Hidden",
+      "identifier": "commandHidden",
+      "shortcut": "ctrl shift h",
+      "handler": "commandHidden",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Toggle Locked",
+      "identifier": "commandLocked",
+      "shortcut": "ctrl shift l",
+      "handler": "commandLocked",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Clear Marks",
+      "identifier": "commandClear",
+      "shortcut": "",
+      "handler": "commandClear",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Settings",
+      "identifier": "commandSettings",
+      "shortcut": "",
+      "handler": "commandSettings",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Rename Old Markers",
+      "identifier": "commandRenameOldMarkers",
+      "handler": "commandRenameOldMarkers",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Run Script",
+      "identifier": "commandRunScript",
+      "handler": "commandRunScript",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Feedback",
+      "identifier": "linkFeedback",
+      "handler": "linkFeedback",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Home",
+      "identifier": "linkHome",
+      "handler": "linkHome",
+      "script": "mark_bundle.js"
+    },
+    {
+      "name": "Init",
+      "identifier": "commandInit",
+      "handlers": {
+        "actions": {
+          "OpenDocument": "commandInit"
+        }
+      },
+      "script": "mark_bundle.js"
+    }
+  ],
+  "menu": {
+    "isRoot": false,
+    "items": [
+      "commandToolbar",
+      "-",
+      "commandOverlays",
+      "commandSizes",
+      "commandSpacings",
+      "commandProperties",
+      "commandNote",
+      "commandCoordinate",
+      "-",
+      "commandExport",
+      "-",
+      "commandHidden",
+      "commandLocked",
+      "commandClear",
+      "-",
+      "commandSettings",
+      {
+        "title": "Help",
+        "items": [
+          "commandRenameOldMarkers",
+          "linkHome",
+          "linkFeedback"
+        ]
+      }
+    ],
+    "title": "Sketch MeaXure Plus"
+  }
+}

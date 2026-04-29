@@ -1,0 +1,45 @@
+{
+  "name": "sketch-meaxure-plus",
+  "description": "Make it a fun to create spec for developers and teammates",
+  "version": "2026.1.1",
+  "engines": {
+    "sketch": ">=69.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/istraw/sketch-meaxure-plus.git"
+  },
+  "skpm": {
+    "name": "Sketch MeaXure Plus ",
+    "manifest": "src/manifest.json",
+    "homepage": "https://github.com/istraw/sketch-meaxure-plus",
+    "appcast": "appcast.xml",
+    "main": "sketch-meaxure-plus.sketchplugin",
+    "assets": [
+      "resources/**/*"
+    ]
+  },
+  "scripts": {
+    "build": "export NODE_OPTIONS=--openssl-legacy-provider; node scripts/buildTmpl.js && skpm-build",
+    "watch": "export DEBUG=1 NODE_OPTIONS=--openssl-legacy-provider; skpm-build --watch",
+    "start": "export DEBUG=1 NODE_OPTIONS=--openssl-legacy-provider; skpm-build --watch --run",
+    "postinstall": "npm run build && skpm-link",
+    "tmpl": "export DEBUG=1; node scripts/buildTmpl.js",
+    "play": "node scripts/playground.js"
+  },
+  "devDependencies": {
+    "@skpm/builder": "^0.7.0",
+    "cocoascript-types": "^0.2.0",
+    "sketch-internal-types": "^97.0.0",
+    "sketch-types": "^1.4.5",
+    "skpm": "^1.3.1",
+    "ts-loader": "^6.2.1",
+    "tslint": "^5.20.1",
+    "typescript": "^3.7.4",
+    "webpack": "^4.44.2"
+  },
+  "author": " utom & jebbs & istraw",
+  "dependencies": {
+    "@skpm/path": "^0.1.4"
+  }
+}
