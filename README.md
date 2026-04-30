@@ -13,7 +13,6 @@
 * Mixed-Color Text Support: Support for selecting and viewing color values of individual segments within mixed-color text boxes.
 * Bug Fixes: 
   - Fixed issues related to Symbol instance exports.
-  - Resolved compatibility bugs under the latest macOS versions.
 
 ### 📦 Installation
 1. Go to the Releases page.
@@ -38,7 +37,6 @@ Since the original project is no longer actively maintained, I have taken over t
 * 多色文本支持：支持选中并查看同一文本框中不同颜色文字段落的独立色值。
 * 缺陷修复：
   - 修复了 Symbol（符号） 实例在导出过程中的失效及报错问题。
-  - 针对最新 macOS 系统环境进行了兼容性优化。
 
 ### 📦 安装方式
 1. 前往 Releases 发布页面。
