@@ -15,7 +15,7 @@
   - Fixed issues related to Symbol instance exports.
 
 ### 📦 Installation
-1. Go to the Releases page.
+1. Go to the [Releases page](https://github.com/istraw/sketch-meaxure-plus/releases).
 2. Download the latest .sketchplugin.zip.
 3. Unzip and double-click the file to install.
 
@@ -39,7 +39,7 @@ Since the original project is no longer actively maintained, I have taken over t
   - 修复了 Symbol（符号） 实例在导出过程中的失效及报错问题。
 
 ### 📦 安装方式
-1. 前往 Releases 发布页面。
+1. 前往 [Releases 发布页面](https://github.com/istraw/sketch-meaxure-plus/releases)。
 2. 下载最新的 .sketchplugin.zip 压缩包。
 3. 解压并双击 .sketchplugin 文件即可完成安装。
 
