@@ -1,7 +1,7 @@
 {
   "name": "sketch-meaxure-plus",
   "description": "Make it a fun to create spec for developers and teammates",
-  "version": "2026.3.15",
+  "version": "2026.3",
   "engines": {
     "sketch": ">=69.0"
   },
