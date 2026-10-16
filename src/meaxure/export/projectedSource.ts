@@ -14,6 +14,9 @@ export function getProjectedSourceId(layer: Layer): string | undefined {
 
 export function getProjectedSourceLayer(layer: Layer): Layer | undefined {
     let sourceId = getProjectedSourceId(layer);
+    // Live document layers already have the correct geometry. Searching the
+    // entire document for a same-named layer is only needed for projections.
+    if (!sourceId && !(layer && (layer as any).__meaxureProjectedRect)) return undefined;
     if (!context || !context.document) return undefined;
     let resolved: Layer | undefined;
 
@@ -131,7 +134,11 @@ function collectMatchingLayers(layers: Layer[], cache: { [key: string]: Layer[] 
             if (!cache[name]) cache[name] = [];
             cache[name].push(layer);
         }
-        collectMatchingLayers(getChildLayers(layer as any), cache);
+        // Symbol masters are indexed on their pages; instance contents are
+        // virtual projections and must not be expanded in this document index.
+        if (layer.type != "SymbolInstance" && !String(layer.name || "").startsWith("#tmp-")) {
+            collectMatchingLayers(getChildLayers(layer as any), cache);
+        }
     });
 }
 

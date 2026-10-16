@@ -22,10 +22,14 @@ export function renderProperties(layerData: LayerData): string {
         '<label></label>',
         '</div>'
     ].join('') : '';
-    let radius = (layerData.radius) ? [
+    const radii = layerData.radius;
+    const hasRadius = radii && radii.length && radii.every(value => typeof value === 'number' && isFinite(value) && value >= 0);
+    const mixedRadius = hasRadius && radii.some(value => value !== radii[0]);
+    let radius = hasRadius ? [
         '<div class="item" data-label="' + localize('Radius') + ':">',
-        '<label><input id="radius" type="text" value="' + unitSize(layerData.radius[0]) + '" readonly="readonly"></label>',
-        '<label></label>',
+        '<label><input id="radius" aria-label="' + localize('Radius') + '" type="text" value="' +
+            (mixedRadius ? radii.map(value => unitSize(value)).join(' / ') : unitSize(radii[0])) + '" readonly="readonly"></label>',
+        mixedRadius ? '' : '<label></label>',
         '</div>'
     ].join('') : '';
     let styleName = (layerData.styleName) ? [

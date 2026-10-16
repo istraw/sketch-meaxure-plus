@@ -2,11 +2,17 @@
 // Use of this source code is governed by the MIT
 // license that can be found in the LICENSE file.
 
+import { getNativeExportRequestAt, assertExportLayerHasDocument } from "./nativeRequest";
 import { SMExportFormat, SliceNativeExportOptions } from "../interfaces";
 import { sketch } from "../../sketch";
 import { ensureDirectory, fileExists, hasNativeMethod } from "../../sketch/compat";
+import { getExportScale, validateExportSize } from "./exportSize";
 import { toJSString } from "../helpers/helper";
 export function exportImage(layer: Layer, format: ExportFormat | SMExportFormat, path: string, name: string, nativeOptions?: SliceNativeExportOptions) {
+    assertExportLayerHasDocument(layer);
+    let frame = nativeOptions && nativeOptions.requestRect || layer.frame;
+    let scale = isSketchExportFormat(format) ? getExportScale(format.size, layer.frame.width, layer.frame.height) : Number(format.scale);
+    validateExportSize(Number(frame.width), Number(frame.height), scale, isSketchExportFormat(format) ? format.fileFormat : format.format);
     let exportInfo = getExportFileInfo(format, name);
     let relativeFileName = exportInfo.fileName;
     let savePath = [path, "/", relativeFileName].join("");
@@ -16,7 +22,7 @@ export function exportImage(layer: Layer, format: ExportFormat | SMExportFormat,
     ensureDirectory(outputPath);
 
     let exported = nativeOptions && isSketchExportFormat(format)
-        ? exportImageWithNativeRequest(layer, savePath, nativeOptions)
+        ? exportImageWithNativeRequest(layer, savePath, nativeOptions, scale)
         : false;
 
     if (!exported) {
@@ -44,7 +50,7 @@ export function exportImage(layer: Layer, format: ExportFormat | SMExportFormat,
         return savePath;
     }
 
-    let bufferFormat = toBufferExportFormat(format);
+    let bufferFormat = toBufferExportFormat(format, layer);
     if (bufferFormat && exportImageBufferToFile(layer, bufferFormat, savePath)) {
         return savePath;
     }
@@ -62,11 +68,12 @@ function getBaseName(path: string): string {
     return index >= 0 ? path.slice(index + 1) : path;
 }
 
-function exportImageWithNativeRequest(layer: Layer, savePath: string, nativeOptions: SliceNativeExportOptions): boolean {
+function exportImageWithNativeRequest(layer: Layer, savePath: string, nativeOptions: SliceNativeExportOptions, scale: number): boolean {
     let request = getNativeExportRequestAt(layer, nativeOptions.requestIndex);
     if (!request) return false;
 
     try {
+        if (hasNativeMethod(request, "setScale")) request.setScale(scale);
         if (nativeOptions.requestRect && hasNativeMethod(request, "setRect")) {
             request.setRect(CGRectMake(
                 nativeOptions.requestRect.x,
@@ -77,6 +84,17 @@ function exportImageWithNativeRequest(layer: Layer, savePath: string, nativeOpti
         }
         if (typeof nativeOptions.shouldTrim == "boolean" && hasNativeMethod(request, "setShouldTrim")) {
             request.setShouldTrim(nativeOptions.shouldTrim);
+        }
+
+        if (typeof MSSelfContainedHighLevelExporter !== "undefined") {
+            // Use the exporter and document color space paired with modern requests.
+            if (!hasNativeMethod(request, "immutableDocument")) return false;
+            let colorSpace = (NSColorSpace as any).colorSpaceForSketchColorSpace(request.immutableDocument().colorSpace()).CGColorSpace();
+            let exporter = (MSExporter as any).exporterForRequest_colorSpace_options(request, colorSpace, 0);
+            let data = exporter.dataAndReturnError(null);
+            if (!data) return false;
+            data.writeToFile_atomically(savePath, true);
+            return fileExists(savePath);
         }
 
         if (typeof MSExportManager !== "undefined" && hasNativeMethod(MSExportManager, "shared")) {
@@ -107,36 +125,22 @@ function exportImageWithNativeRequest(layer: Layer, savePath: string, nativeOpti
     return false;
 }
 
-function getNativeExportRequestAt(layer: Layer, requestIndex: number = 0): any {
-    let nativeLayer = layer ? (layer as any).sketchObject : undefined;
-    if (!nativeLayer || typeof MSExportRequest === "undefined") return undefined;
-    try {
-        let requests = MSExportRequest.exportRequestsFromExportableLayer(nativeLayer);
-        if (!requests) return undefined;
-        if (typeof requests.objectAtIndex == "function") {
-            return requests.count() > requestIndex ? requests.objectAtIndex(requestIndex) : undefined;
-        }
-        if (Array.isArray(requests)) return requests[requestIndex];
-        return requests[requestIndex];
-    } catch (error) {
-        return undefined;
-    }
-}
-
 export function exportImageToBuffer(layer: Layer, format: SMExportFormat): Buffer {
+    assertExportLayerHasDocument(layer);
+    validateExportSize(Number(layer.frame.width), Number(layer.frame.height), Number(format.scale), format.format);
     return sketch.export(layer, {
-        output: null,
+        output: false,
         formats: format.format,
         scales: format.scale.toString(),
     }) as Buffer;
 }
 
-function toBufferExportFormat(format: ExportFormat | SMExportFormat): SMExportFormat | undefined {
+function toBufferExportFormat(format: ExportFormat | SMExportFormat, layer: Layer): SMExportFormat | undefined {
     if (!format) return undefined;
     if (isSketchExportFormat(format)) {
         return {
             format: format.fileFormat,
-            scale: Number(format.scale) || 1,
+            scale: getExportScale(format.size, layer.frame.width, layer.frame.height),
             prefix: format.prefix || "",
             suffix: format.suffix || "",
         };

@@ -136,6 +136,16 @@ export interface SMColorAsset {
     name: string,
     color: SMColor,
 }
+export interface SMDownloadSource {
+    name: string;
+    width: number;
+    height: number;
+    dataURL: string;
+    format: 'svg' | 'png';
+    containsBitmap: boolean;
+    maxScale?: number;
+}
+
 export interface ExportData {
     /**
      * Design resolution, 2 represents @2x
@@ -146,6 +156,7 @@ export interface ExportData {
     colorFormat: string,
     artboards: ArtboardData[],
     slices: any[],
+    downloadSources?: { [id: string]: SMDownloadSource },
     colors: SMColorAsset[],
     languages: { [key: string]: Object },
 }
@@ -173,6 +184,7 @@ export interface SMExportable {
     name: string,
     format: string,
     path: string,
+    sourceID?: string,
 }
 
 export interface SliceNativeExportOptions {

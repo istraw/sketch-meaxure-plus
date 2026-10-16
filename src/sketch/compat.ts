@@ -2,15 +2,19 @@ import { sketch } from ".";
 
 export function hasNativeMethod(target: any, method: string): boolean {
     try {
-        return !!(target && target[method] && typeof target[method] === 'function');
+        let value = target && target[method];
+        return typeof value === 'function';
     } catch (error) {
         return false;
     }
 }
 
 export function callNative<T>(target: any, method: string, fallback?: T, ...args): T {
-    if (!hasNativeMethod(target, method)) return fallback;
-    return target[method](...args);
+    let nativeMethod;
+    try { nativeMethod = target && target[method]; } catch (error) { return fallback; }
+    if (typeof nativeMethod !== 'function') return fallback;
+    // CocoaScript callable proxies do not inherit Function.prototype.apply.
+    return Function.prototype.apply.call(nativeMethod, target, args);
 }
 
 export function getNative<T>(target: any, property: string, fallback?: T): T {
@@ -47,7 +51,9 @@ export function wrapLayer(layer: any): Layer {
 
 export function getChildLayers(layer: Layer): Layer[] {
     if (!layer) return [];
-    if (layer.layers && layer.layers.length) return layer.layers;
+    // The SDK getter wraps every child. Read it once, including empty groups.
+    let children = layer.layers;
+    if (children) return children;
     let nativeLayers = callNative<any>(layer.sketchObject, "layers", undefined);
     if (!nativeLayers) return [];
     let results: Layer[] = [];

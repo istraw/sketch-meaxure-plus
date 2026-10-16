@@ -11,7 +11,33 @@
     <link href="assets/css/app.css" rel="stylesheet">
     <script type="text/javascript" src="assets/js/jquery-2.2.4.min.js"></script>
     <script type="text/javascript" src="assets/js/common.js"></script>
+    <style>
+        #artboards-list { height:328px; }
+        .export-resolution { margin-top:16px; }
+        .export-resolution-row { display:flex;align-items:center;gap:12px; }
+        .export-resolution-row > label { flex:1;white-space:nowrap; }
+        .export-resolution-controls { display:flex;gap:8px;width:160px; }
+        .export-resolution-controls select,.export-resolution-controls input { box-sizing:border-box;min-width:0;height:28px;padding:3px 7px;border:1px solid #555;border-radius:3px;background:#111;color:#fff; }
+        .export-resolution-controls select { flex:1; }
+        .export-resolution-controls input { width:70px; }
+        #export-resolution-tip,#export-resolution-error { margin:8px 0 0;font-size:11px;line-height:16px; }
+        #export-resolution-tip { color:#999; }
+        #export-resolution-error { color:#ff8888; }
+        #export-resolution-tip:empty,#export-resolution-error:empty { display:none; }
+    </style>
     <script type="text/javascript">
+        function getExportResolution() {
+            return Number($('#export-resolution').val() === 'custom'
+                ? $('#export-resolution-custom').val() : $('#export-resolution').val());
+        }
+        function updateExportResolution(units) {
+            $('#export-resolution-custom').toggle($('#export-resolution').val() === 'custom');
+            var resolution = getExportResolution();
+            var valid = isFinite(resolution) && resolution > 0;
+            $('#export-resolution-tip').text(valid ? _('%@px on Sketch = 1%@ on device', resolution, units || 'px') : '');
+            $('#export-resolution-error').text(valid ? '' : _('Enter a number greater than 0'));
+            return valid;
+        }
         var checkVCheckbox = function () {
             var allCheckboxLength = $('input[name=artboards]').length,
                 checkedLength = $('input[name=artboards]:checked').length;
@@ -68,6 +94,7 @@
             sendOrderRequest = function () {
                 if (!window.meaxure) return;
                 let data = {
+                    resolution: getExportResolution(),
                     order: $('input[name=order]:checked').val(),
                     reverse: $('input[name=reverse]:checked').val() == '1',
                     exportInfluenceRect: $('input[name=export-influenceRect]:checked').length > 0,
@@ -211,6 +238,20 @@
                     '</label>',
                     '</div>',
 
+                    '<div class="export-resolution">',
+                    '<div class="export-resolution-row">',
+                    '<label for="export-resolution">' + _('Export resolution') + '</label>',
+                    '<div class="export-resolution-controls">',
+                    '<select id="export-resolution" aria-label="' + _('Export resolution') + '">',
+                    '<option value="0.75">@0.75x</option><option value="1">@1x</option>',
+                    '<option value="1.5">@1.5x</option><option value="2">@2x</option>',
+                    '<option value="3">@3x</option><option value="4">@4x</option>',
+                    '<option value="custom">' + _('Custom') + '</option></select>',
+                    '<input id="export-resolution-custom" type="number" min="0" step="any" aria-label="' + _('Design resolution') + '" style="display:none">',
+                    '</div></div>',
+                    '<p id="export-resolution-tip"></p>',
+                    '<p id="export-resolution-error" role="status" aria-live="polite"></p>',
+                    '</div>',
                     '</div>',
                     '<div class="footer">',
                     '<button id="submit" class="submit" disabled="disabled">' + _('Export') + '</button>',
@@ -344,8 +385,22 @@
 
                 $('input[name=export-option]').change(checkedOption);
 
+                var resolution = Number(data.resolution) || 1;
+                var preset = ['0.75','1','1.5','2','3','4'].indexOf(String(resolution)) >= 0;
+                $('#export-resolution').val(preset ? String(resolution) : 'custom');
+                $('#export-resolution-custom').val(resolution);
+                $('#export-resolution, #export-resolution-custom').on('change input', function () {
+                    updateExportResolution(data.units);
+                });
+                updateExportResolution(data.units);
+
                 $('#submit').click(function () {
-                    var data = {
+                    if (!updateExportResolution(data.units)) {
+                        $('#export-resolution-custom').focus();
+                        return;
+                    }
+                    var submission = {
+                        resolution: getExportResolution(),
                         order: $('input[name=order]:checked').val(),
                         reverse: $('input[name=reverse]:checked').val() == '1',
                         exportInfluenceRect: $('input[name=export-influenceRect]:checked').length > 0,
@@ -354,9 +409,11 @@
                     }
                     $('input[name=artboards]:checked').each(function () {
                         var objectID = $(this).val();
-                        data.selection[objectID] = true;
+                        submission.selection[objectID] = true;
                     });
-                    meaxure.postMessage('submit', data);
+                    meaxure.postMessage('submit', submission).catch(error => {
+                        $('#export-resolution-error').text(String(error.message || error));
+                    });
                 });
 
                 if (!data.selection) {
@@ -395,6 +452,8 @@
             }).catch(error => showError(error));
         } else {
             let testData = {
+                resolution: 2,
+                units: 'pt',
                 exportOption: 1,
                 order: 'artboard-rows',
                 reverse: false,

@@ -8,9 +8,15 @@ import { getLayerData } from "./layerData";
 import { TextFragment } from "../../sketch/text/textFragment";
 import { Edge, EdgeVertical } from "../../sketch/layer/alignment";
 import { tempLayers } from "./tempLayers";
+import { getProjectionHost } from "./projectionHost";
 
-export function getTextFragment(artboard: Artboard, layer: Text, data: ArtboardData) {
+export function getTextFragment(artboard: Artboard, layer: Text, data: ArtboardData): Promise<void> | void {
+    if ((layer as any).__meaxureFragmentText) return;
     if (layer.type != sketch.Types.Text || layer.getFragmentsCount() < 2) return;
+    return exportTextFragments(artboard, layer, data);
+}
+
+async function exportTextFragments(artboard: Artboard, layer: Text, data: ArtboardData) {
     let fragments = layer.getFragments();
     // stopwatch.tik('get text fragments');
     let offsetFragmentsY = 0;
@@ -23,109 +29,117 @@ export function getTextFragment(artboard: Artboard, layer: Text, data: ArtboardD
     } else {
         lines = [fragments];
     }
-    let textGroup: Group = new sketch.Group({ parent: artboard });
+    const singleLine = lines.length === 1 && lines[0] != null;
+    let exportHost = getProjectionHost(artboard);
+    let alignmentTarget = layer.frame.changeBasis({ from: layer.parent as Group, to: artboard });
+    let textGroup: Group = new sketch.Group({ parent: exportHost });
     tempLayers.add(textGroup);
 
-    for (let frags of lines) {
-        if (frags == null) {
-            // it's a new paragraph
-            offsetFragmentsY += layer.style.paragraphSpacing;
-            continue;
-        }
-        let offsetFragmentsX = 0;
-        let lineGroup = new sketch.Group({ parent: textGroup });
-        lineGroup.frame.x = 0;
-        lineGroup.frame.y = offsetFragmentsY;
-        let currentLineHeight = layer.style.lineHeight || Math.max(...frags.map(f => f.defaultLineHeight));
-        for (let fragment of frags) {
-            fragment.style.fills.forEach(fill => {
-                // https://github.com/qjebbs/sketch-meaxure/issues/2
-                // https://github.com/sketch-hq/SketchAPI/issues/726
-                if (fill.pattern && fill.pattern.image === null) fill.pattern.image = undefined;
-            });
-            let subText = new sketch.Text({ text: fragment.text, parent: lineGroup });
-            subText.style = fragment.style;
-            applyFragmentTextStyle(subText, fragment);
-            subText.style.lineHeight = currentLineHeight;
-            (subText as any).__meaxureFragmentText = true;
-            (subText as any).__meaxureFragmentLineHeight = currentLineHeight;
-            subText.frame = new sketch.Rectangle(
-                offsetFragmentsX,
-                0,
-                subText.frame.width,
-                currentLineHeight
-            );
-            offsetFragmentsX += subText.frame.width;
-        }
-        lineGroup.adjustToFit();
-        offsetFragmentsY += currentLineHeight;
-    }
-    switch (layer.style.alignment) {
-        case sketch.Text.Alignment.center:
-            for (let line of textGroup.layers) {
-                line.alignTo(
-                    layer,
-                    { from: Edge.center, to: Edge.center },
-                    false
-                )
+    try {
+        for (let frags of lines) {
+            if (frags == null) {
+                // it's a new paragraph
+                offsetFragmentsY += layer.style.paragraphSpacing;
+                continue;
             }
-            break;
-        case sketch.Text.Alignment.right:
-            for (let line of textGroup.layers) {
-                line.alignTo(
-                    layer,
-                    { from: Edge.right, to: Edge.right },
-                    false
-                )
+            let offsetFragmentsX = 0;
+            let lineGroup = new sketch.Group({ parent: textGroup });
+            lineGroup.frame.x = 0;
+            lineGroup.frame.y = offsetFragmentsY;
+            let currentLineHeight = layer.style.lineHeight || Math.max(...frags.map(f => f.defaultLineHeight));
+            for (let fragment of frags) {
+                fragment.style.fills.forEach(fill => {
+                    // https://github.com/qjebbs/sketch-meaxure/issues/2
+                    // https://github.com/sketch-hq/SketchAPI/issues/726
+                    if (fill.pattern && fill.pattern.image === null) fill.pattern.image = undefined;
+                });
+                let subText = new sketch.Text({ text: fragment.text, parent: lineGroup });
+                subText.style = fragment.style;
+                applyFragmentTextStyle(subText, fragment);
+                // Reconstructing a mixed-font string can produce a different
+                // default line height from the saved design container. Keep the
+                // source's automatic line height and container for single lines.
+                subText.style.lineHeight = singleLine ? layer.style.lineHeight : currentLineHeight;
+                (subText as any).__meaxureFragmentText = true;
+                (subText as any).__meaxureFragmentLineHeight = singleLine ? textFrame.height : currentLineHeight;
+                subText.frame = new sketch.Rectangle(
+                    offsetFragmentsX,
+                    0,
+                    subText.frame.width,
+                    singleLine ? textFrame.height : currentLineHeight
+                );
+                offsetFragmentsX += subText.frame.width;
             }
-            break;
-        default:
-            break;
-    }
-    textGroup.adjustToFit();
-    switch (layer.style.verticalAlignment) {
-        case sketch.Text.VerticalAlignment.top:
-            textGroup.alignTo(
-                layer,
-                { from: Edge.left, to: Edge.left },
-                { from: EdgeVertical.top, to: EdgeVertical.top },
-            )
-            break;
-        case sketch.Text.VerticalAlignment.center:
-            textGroup.alignTo(
-                layer,
-                { from: Edge.left, to: Edge.left },
-                { from: EdgeVertical.middle, to: EdgeVertical.middle },
-            )
-            break;
-        case sketch.Text.VerticalAlignment.bottom:
-            textGroup.alignTo(
-                layer,
-                { from: Edge.left, to: Edge.left },
-                { from: EdgeVertical.bottom, to: EdgeVertical.bottom },
-            )
-            break;
-        default:
-            break;
-    }
-    // stopwatch.tik('create temp texts for fragments');
-    for (let text of sketch.find<Text>('Text', textGroup)) {
-        let frame = text.frame.changeBasis({ from: text.parent as Group, to: artboard });
-        let lineHeight = (text as any).__meaxureFragmentLineHeight || text.style.lineHeight || frame.height;
-        let verticalInset = Math.max(0, lineHeight - frame.height) / 2;
-        (text as any).__meaxureProjectedRect = {
-            x: frame.x,
-            y: frame.y - verticalInset,
-            width: frame.width,
-            height: lineHeight,
-        };
-        getLayerData(artboard, text, data, false);
-    }
-    textGroup.remove();
+            lineGroup.adjustToFit();
+            offsetFragmentsY += currentLineHeight;
+        }
+        switch (layer.style.alignment) {
+            case sketch.Text.Alignment.center:
+                for (let line of textGroup.layers) {
+                    line.alignTo(
+                        alignmentTarget,
+                        { from: Edge.center, to: Edge.center },
+                        false
+                    )
+                }
+                break;
+            case sketch.Text.Alignment.right:
+                for (let line of textGroup.layers) {
+                    line.alignTo(
+                        alignmentTarget,
+                        { from: Edge.right, to: Edge.right },
+                        false
+                    )
+                }
+                break;
+            default:
+                break;
+        }
+        textGroup.adjustToFit();
+        switch (layer.style.verticalAlignment) {
+            case sketch.Text.VerticalAlignment.top:
+                textGroup.alignTo(
+                    alignmentTarget,
+                    { from: Edge.left, to: Edge.left },
+                    { from: EdgeVertical.top, to: EdgeVertical.top },
+                )
+                break;
+            case sketch.Text.VerticalAlignment.center:
+                textGroup.alignTo(
+                    alignmentTarget,
+                    { from: Edge.left, to: Edge.left },
+                    { from: EdgeVertical.middle, to: EdgeVertical.middle },
+                )
+                break;
+            case sketch.Text.VerticalAlignment.bottom:
+                textGroup.alignTo(
+                    alignmentTarget,
+                    { from: Edge.left, to: Edge.left },
+                    { from: EdgeVertical.bottom, to: EdgeVertical.bottom },
+                )
+                break;
+            default:
+                break;
+        }
+        // stopwatch.tik('create temp texts for fragments');
+        for (let text of sketch.find<Text>('Text', textGroup)) {
+            let frame = text.frame.changeBasis({ from: text.parent as Group, to: exportHost });
+            let lineHeight = (text as any).__meaxureFragmentLineHeight || text.style.lineHeight || frame.height;
+            let verticalInset = Math.max(0, lineHeight - frame.height) / 2;
+            (text as any).__meaxureProjectedRect = {
+                x: frame.x,
+                y: singleLine ? alignmentTarget.y : frame.y - verticalInset,
+                width: frame.width,
+                height: lineHeight,
+            };
+            const pending = getLayerData(exportHost, text, data, false);
+            if (pending) await pending;
+        }
+    } finally { tempLayers.remove(textGroup); }
 }
 function getFragmentsByLines(layer: Text, fragments: TextFragment[]): TextFragment[][] {
     let svg = (
-        sketch.export(layer, { output: undefined, formats: 'svg' }) as Buffer
+        sketch.export(layer, { output: false, formats: 'svg' }) as Buffer
     ).toString();
     let lines = getFragmentLinesFromSVG(svg);
     let fragmentsByLines: TextFragment[][] = [];

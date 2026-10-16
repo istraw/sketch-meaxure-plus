@@ -10,15 +10,20 @@ import { createWebviewPanel } from "../../webviewPanel";
 import { toHTMLEncode, newStopwatch, toSlug, emojiToEntities, getResourcePath } from "../helpers/helper";
 import { writeFile, buildTemplate, exportImage, exportImageToBuffer } from "./files";
 import { logger } from "../common/logger";
-import { ExportData, ArtboardData, LayerData, SMType } from "../interfaces";
+import { ExportData, ArtboardData, LayerData, SMType, SMRect } from "../interfaces";
 import { getLayerData } from "./layerData";
-import { clearSliceCache, getCollectedSlices } from "./slice";
+import { clearSliceCache, getCollectedSlices, getCollectedDownloadSources } from "./slice";
 import { clearMaskStack } from "./mask";
 import { getDocumentColors } from "./colors";
 import { clearTintStack } from "./tint";
 import { tempLayers } from "./tempLayers";
 import { LayerPlaceholder } from "./layers";
 import { clearProjectedSourceCache } from "./projectedSource";
+import { ExportSession, isExportCancelled, setExportSession, checkpointLayer } from "./session";
+import { clearLayerStateCache } from "./layerStates";
+import { clearNativeExportRequestCache } from "./nativeRequest";
+import { closeProjectionHost } from "./projectionHost";
+import { beginExportActivity } from "./activity";
 
 export let savePath: string;
 export let assetsPath: string;
@@ -34,6 +39,13 @@ export async function exportSpecification() {
     }
     let processingPanel;
     let cancelled = false;
+    let fiber;
+    let session: ExportSession;
+    let status = "failed";
+    let layerIndex = 0;
+    let lastDiagnostics = 0;
+    let ownsExport = false;
+    let endActivity: () => void;
     try {
         let results = await exportPanel();
         if (!results) return;
@@ -50,6 +62,9 @@ export async function exportSpecification() {
         assetsPath = savePath + "/assets";
 
         sketch.Settings.setSessionVariable<boolean>(RUNNING_FLAG_KEY, true);
+        ownsExport = true;
+        fiber = require("sketch/async").createFiber();
+        endActivity = beginExportActivity();
         stopwatch.restart();
         skippedLayers = [];
         exportWarnings = [];
@@ -66,6 +81,17 @@ export async function exportSpecification() {
             processingPanel.onClose(() => cancelled = true);
             safeCall(() => processingPanel.show());
         }
+        session = new ExportSession(() => cancelled, current => {
+            if (processingPanel) safeCall(() => processingPanel.postMessage('process', {
+                percentage: Math.round(layerIndex / results.layersCount * 100),
+                text: localize("Processing layer %@ of %@", layerIndex, results.layersCount) + " · " + current.currentLayer.slice(0, 24)
+            }));
+            if (Date.now() - lastDiagnostics >= 1000) {
+                safeCall(() => writeFile({ content: JSON.stringify(current.summary('running')), path: savePath, fileName: 'export-diagnostics.json' }));
+                lastDiagnostics = Date.now();
+            }
+        });
+        setExportSession(session);
         let template = safeValue(
             () => NSString.stringWithContentsOfFile_encoding_error(getResourcePath() + "/template.html", 4, nil),
             ""
@@ -81,7 +107,6 @@ export async function exportSpecification() {
             languages: getAllLanguage(),
         };
 
-        let layerIndex = 0;
         for (let i = 0; i < results.selection.length; i++) {
             let select = results.selection[i];
             let artboard = select.artboard;
@@ -100,14 +125,19 @@ export async function exportSpecification() {
             data.artboards[i].height = artboard.frame.height;
             data.artboards[i].flowStartPoint = artboard.flowStartPoint;
             for (let layer of select.children) {
+                clearNativeExportRequestCache();
                 layerIndex++;
                 if (cancelled) {
+                    status = 'cancelled';
                     sketch.UI.message(localize('Cancelled by user'));
                     return;
                 }
                 let taskError: Error;
-                await getLayerTask(artboard, layer, data.artboards[i], results.byInfluence)
-                    .catch(err => taskError = err);
+                try {
+                    const pending = getLayerData(artboard, layer, data.artboards[i], results.byInfluence);
+                    if (pending) await pending;
+                } catch (error) { taskError = error; }
+                if (isExportCancelled(taskError)) throw taskError;
                 if (taskError) {
                     let layerName = layer instanceof LayerPlaceholder ? '[placeholder]' : layer.name;
                     skippedLayers.push(layerName);
@@ -115,13 +145,9 @@ export async function exportSpecification() {
                     logger.log(3, `Skip layer "${layerName}" during export.`, taskError);
                     continue;
                 }
-                if (processingPanel) {
-                    safeCall(() => processingPanel.postMessage('process', {
-                        percentage: Math.round(layerIndex / results.layersCount * 100),
-                        text: localize("Processing layer %@ of %@", layerIndex, results.layersCount)
-                    }));
-                }
+
             }
+            await checkpointLayer(artboard.name);
             normalizeArtboardSliceAliasRects(data.artboards[i]);
             safeCall(() => {
                 if (results.advancedMode) {
@@ -133,7 +159,12 @@ export async function exportSpecification() {
                 skippedLayers.push(artboard.name);
                 exportWarnings.push(`Skipped artboard export output: ${artboard.name}`);
             });
+            clearNativeExportRequestCache();
+            clearMaskStack();
+            clearTintStack();
+            clearLayerStateCache();
         }
+        data.downloadSources = safeValue(() => getCollectedDownloadSources(), {});
         data.slices = safeValue(() => getCollectedSlices(), []);
 
         let selectingPath = savePath;
@@ -150,18 +181,34 @@ export async function exportSpecification() {
             }));
             selectingPath = savePath + "/index.html";
         }
+        status = exportWarnings.length ? "complete-with-warnings" : "complete";
         safeCall(() => sketch.UI.showFiles([selectingPath]));
         if (skippedLayers.length > 0) {
             sketch.UI.message(localize("Export complete! Takes %@ seconds", stopwatch.elpased() / 1000) + ` (${skippedLayers.length} layer(s) skipped)`);
         } else {
             sketch.UI.message(localize("Export complete! Takes %@ seconds", stopwatch.elpased() / 1000));
         }
+    } catch (error) {
+        if (!isExportCancelled(error)) throw error;
+        status = 'cancelled';
+        sketch.UI.message(localize('Cancelled by user'));
     } finally {
-        tempLayers.removeAll();
-        safeCall(() => tempLayers.purgeByNamePrefix(context.document));
-        sketch.Settings.setSessionVariable<boolean>(RUNNING_FLAG_KEY, false);
-        if (processingPanel) {
-            safeCall(() => processingPanel.close());
+        if (session) safeCall(() => writeFile({ content: JSON.stringify({ ...session.summary(status), warnings: exportWarnings }, null, 2), path: savePath, fileName: 'export-diagnostics.json' }));
+        if (ownsExport) {
+            setExportSession();
+            clearLayerStateCache();
+            clearNativeExportRequestCache();
+            tempLayers.removeAll();
+            safeCall(() => closeProjectionHost());
+            clearProjectedSourceCache();
+            clearMaskStack();
+            clearTintStack();
+            sketch.Settings.setSessionVariable<boolean>(RUNNING_FLAG_KEY, false);
+            if (processingPanel) {
+                safeCall(() => processingPanel.close());
+            }
+            if (endActivity) safeCall(endActivity);
+            if (fiber) fiber.cleanup();
         }
     }
     // let statistics = stopwatch.statistics()
@@ -184,18 +231,6 @@ function safeValue<T>(fn: () => T, fallback: T): T {
         logger.log(3, 'Use export fallback value.', error);
         return fallback;
     }
-}
-
-function getLayerTask(artboard: Artboard, layer: Layer | LayerPlaceholder, data: ArtboardData, byInfluence: boolean, symbolLayer?: Layer): Promise<boolean> {
-    return new Promise<true>((resolve, reject) => {
-        try {
-            getLayerData(artboard, layer, data, byInfluence, symbolLayer)
-        } catch (error) {
-            reject(error)
-            return;
-        }
-        resolve(true);
-    });
 }
 
 function exportArtboardAdvanced(artboard: Artboard, data: ExportData, savePath: string, i: number) {
@@ -269,6 +304,7 @@ function exportArtboard(artboard: Artboard, exportData: ExportData, index: numbe
         colorFormat: exportData.colorFormat,
         artboards: [data],
         slices: [],
+        downloadSources: getCollectedDownloadSources(),
         colors: [],
         languages: exportData.languages,
     };

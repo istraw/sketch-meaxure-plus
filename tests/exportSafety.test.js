@@ -1,0 +1,41 @@
+const assert = require('assert'), fs = require('fs'), vm = require('vm'), ts = require('typescript');
+function load(file, imports = {}, extra = {}) {
+    const code = ts.transpileModule(fs.readFileSync('src/meaxure/export/'+file+'.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2015}}).outputText;
+    const box = {exports:{},require:n=>imports[n],...extra};vm.runInNewContext(code,box);return box.exports;
+}
+const {tempLayers} = load('tempLayers');
+let removed = 0;
+const owned = {id:'owned',name:'test',remove(){removed++}};
+const userLayer = {id:'user',name:'#tmp-user',remove(){throw Error('user layer removed')}};
+tempLayers.add(owned);assert(tempLayers.exists(owned));tempLayers.remove(owned);tempLayers.remove(owned);tempLayers.removeAll();
+assert.strictEqual(removed,1);assert(!tempLayers.exists('owned'));assert.strictEqual(userLayer.name,'#tmp-user');
+const {getExportScale,validateExportSize} = load('exportSize');
+assert.strictEqual(getExportScale('2x',100,50),2);
+assert.strictEqual(getExportScale('200width',100,50),2);
+assert.strictEqual(getExportScale('100h',100,50),2);
+assert.throws(()=>getExportScale('invalid',100,50));
+for (const [w,h,s] of [[0,1,1],[1,1,Infinity],[NaN,1,1],[-1,1,1],[100000,100000,1]]) assert.throws(()=>validateExportSize(w,h,s,'png'));
+validateExportSize(100000,100000,1,'svg');validateExportSize(100,100,2,'png');
+const {getChildrenForExport} = load('layers',{'../helpers/helper':{},'./tint':{getTintInfo:l=>l.tint},'../../sketch/compat':{getChildLayers:l=>l.layers||[]},'../../sketch':{sketch:{Types:{SymbolInstance:'SymbolInstance'}}}});
+let tree = {id:'leaf',layers:[]};
+for(let i=0;i<20000;i++)tree={id:'group'+i,layers:[tree]};
+let [items,count]=getChildrenForExport(tree);assert.strictEqual(count,20001);assert.strictEqual(items[0].id,'leaf');assert.strictEqual(items[count-1],tree);
+const tint={};const nested={id:'root',tint,layers:[{id:'a'},{id:'b',type:'SymbolInstance',get layers(){throw Error('expanded virtual symbol')}}]};
+[items,count]=getChildrenForExport(nested);assert.deepStrictEqual(Array.from(items,x=>x.id||'tint'),['tint','a','b','root']);
+const cycle={id:'cycle'};cycle.layers=[cycle];assert.throws(()=>getChildrenForExport(cycle),/Cyclic/);
+const trees = load('symbolTreeCache');let loads=0,childReads=0;
+const source = Array.from({length:100},(_,i)=>({id:i,children:Array.from({length:100},(_,j)=>({id:i+':'+j}))}));
+const symbol={};
+for(let i=0;i<100;i++)for(let j=0;j<100;j++)assert.strictEqual(trees.getCachedSymbolLayer(symbol,'master',()=>{loads++;return source},l=>{childReads++;return l.children},`${i}/${j}`).id,i+':'+j);
+assert.strictEqual(loads,1);assert.strictEqual(childReads,100);
+trees.clearSymbolTreeCache(symbol);trees.getCachedSymbolLayer(symbol,'master',()=>{loads++;return source},()=>[], '0');assert.strictEqual(loads,2);
+(async()=>{
+    let now=0,cancelled=false,yields=0,cleared=0;
+    const {ExportSession,isExportCancelled} = load('session',{'../../../package.json':require('../package.json'),'./layerStates':{clearLayerStateCache(){}}}, {Date:{now:()=>now},clearTimeout(){cleared++;},setTimeout:fn=>{yields++;cancelled=true;setTimeout(fn,0)}});
+    const session = new ExportSession(()=>cancelled,()=>{});
+    assert.strictEqual(session.checkpoint('parent'),undefined);now=250;
+    await assert.rejects(session.checkpoint('nested child'),isExportCancelled);
+    assert.strictEqual(yields,1);
+    assert.strictEqual(cleared,1,'each fired Sketch timer must release its retained fiber');
+    console.log('PASS: 20001-deep layers, cycles, traversal order, 10000 symbol path lookups, cancellation, owned cleanup, raster bounds');
+})().catch(e=>{console.error(e);process.exitCode=1});

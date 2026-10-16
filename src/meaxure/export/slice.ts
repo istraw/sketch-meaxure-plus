@@ -2,19 +2,26 @@
 // Use of this source code is governed by the MIT
 // license that can be found in the LICENSE file.
 
-import { SMExportable, LayerData, SMExportFormat, SMRect, SliceNativeExportOptions } from "../interfaces";
+import { getNativeExportRequestAt } from "./nativeRequest";
+import { SMExportable, LayerData, SMExportFormat, SMRect, SliceNativeExportOptions, SMDownloadSource } from "../interfaces";
 import { assetsPath } from ".";
 import { context } from "../common/context";
-import { exportImage } from "./files";
+import { exportImage, exportImageToBuffer } from "./files";
 import { sketch } from "../../sketch";
-import { getProjectedSourceLayer, getLayerFrameRect } from "./projectedSource";
+import { getProjectedSourceLayer } from "./projectedSource";
 import { hasNativeMethod } from "../../sketch/compat";
+import { getProjectionRenderLayer, releaseOrdinarySliceRenderLayer } from "./projectionHost";
 
+let downloadSources: { [id: string]: SMDownloadSource } = {};
+let sourceContents = new Map<string, string>();
+export function getCollectedDownloadSources() { return downloadSources; }
 let slices = [];
 let sliceCache: { [key: string]: SMExportable[] } = {}
 let sliceDebugs: any[] = [];
 
 export function clearSliceCache(): void {
+    downloadSources = {};
+    sourceContents.clear();
     slices = [];
     sliceCache = {};
     sliceDebugs = [];
@@ -48,10 +55,17 @@ export function getSlice(layer: Layer, layerData: LayerData, symbolLayer: Layer)
         sliceName = layerMaster.name
     }
     if (!formats) return;
+    // Transparent instances still expose exportable descendants. Rendering
+    // those descendants produces blank assets and can overwrite a visible
+    // instance's file with the same name later in the traversal.
+    if (hasTransparentExportAncestor(layer)) return;
     layerData.objectID = sliceID;
     // export it, if haven't yet
     if (!sliceCache[sliceID]) {
         try {
+            // A Slice renders scene pixels. Its visible render copy preserves
+            // the containing content without unrelated ancestor backgrounds.
+            exportLayer = getProjectionRenderLayer(layer);
             NSFileManager.defaultManager()
                 .createDirectoryAtPath_withIntermediateDirectories_attributes_error(assetsPath, true, nil, nil);
             sliceCache[sliceID] = layerData.exportable = getExportable(exportLayer, formats, layer.name, sourceLayer);
@@ -71,11 +85,24 @@ export function getSlice(layer: Layer, layerData: LayerData, symbolLayer: Layer)
                 error: String(error),
             });
             throw error;
+        } finally {
+            releaseOrdinarySliceRenderLayer(layer);
         }
     } else if (sliceCache[sliceID]) {
         layerData.exportable = sliceCache[sliceID];
     }
 }
+function hasTransparentExportAncestor(layer: Layer): boolean {
+    let seen = new Set<Layer>();
+    let current = layer;
+    while (current && !seen.has(current)) {
+        seen.add(current);
+        if (current.style && Number(current.style.opacity) === 0) return true;
+        current = current.parent as Layer;
+    }
+    return false;
+}
+
 function getExportable(layer: Layer, formats: ExportFormat[], outputName: string, sourceLayer?: Layer): SMExportable[] {
     let exportable = [];
     for (let [index, format] of formats.entries()) {
@@ -115,7 +142,50 @@ function getExportable(layer: Layer, formats: ExportFormat[], outputName: string
         });
     }
 
+    // Keep a self-contained source so offline browsers can resize/encode it
+    // without drawing file:// images into a tainted canvas.
+    try {
+        let sourceID = collectDownloadSource(layer, outputName);
+        exportable.forEach(item => item.sourceID = sourceID);
+    } catch (error) {
+        sliceDebugs.push({stage:'download-source-unavailable',name:outputName,error:String(error)});
+    }
     return exportable;
+}
+
+function collectDownloadSource(layer: Layer, name: string): string {
+    const resolution = Number(context.configs.resolution) || 1;
+    let format: 'svg' | 'png' = 'svg';
+    let buffer: Buffer;
+    let width = layer.frame.width, height = layer.frame.height;
+    let maxScale: number;
+    let containsBitmap = false;
+    try {
+        buffer = exportImageToBuffer(layer, {format:'svg',scale:1,prefix:'',suffix:''});
+        let svg = buffer.toString('utf8');
+        if (!/<svg[\s>]/i.test(svg)) throw new Error('SVG source unavailable');
+        const box = /viewBox=["']\s*[-\d.e+]+[ ,]+[-\d.e+]+[ ,]+([\d.e+]+)[ ,]+([\d.e+]+)\s*["']/i.exec(svg);
+        if (box) { width = Number(box[1]); height = Number(box[2]); }
+        containsBitmap = /<image[\s>]/i.test(svg);
+    } catch (error) {
+        format = 'png';
+        containsBitmap = true;
+        maxScale = 4;
+        try { buffer = exportImageToBuffer(layer, {format:'png',scale:4/resolution,prefix:'',suffix:''}); }
+        catch (error) {
+            maxScale = 1;
+            buffer = exportImageToBuffer(layer, {format:'png',scale:1/resolution,prefix:'',suffix:''});
+        }
+    }
+    const dataURL = 'data:image/' + (format == 'svg' ? 'svg+xml' : 'png') + ';base64,' + buffer.toString('base64');
+    const key = JSON.stringify([name,width/resolution,height/resolution,dataURL]);
+    let id = sourceContents.get(key);
+    if (!id) {
+        id = 'source-' + Object.keys(downloadSources).length;
+        sourceContents.set(key,id);
+        downloadSources[id] = {name,width:width/resolution,height:height/resolution,dataURL,format,containsBitmap,maxScale};
+    }
+    return id;
 }
 
 export function getSliceNativeExportOptions(layer: Layer, sourceLayer?: Layer, requestIndex: number = 0, fallbackRect?: SMRect): SliceNativeExportOptions | undefined {
@@ -126,19 +196,13 @@ export function getSliceNativeExportOptions(layer: Layer, sourceLayer?: Layer, r
     let requestRect = projectedRect;
     let shouldTrim = hasNativeMethod(projectedRequest, "shouldTrim") ? !!projectedRequest.shouldTrim() : undefined;
 
-    if (sourceLayer) {
+    // Native requests use the renderer's document coordinates. Master frames
+    // are parent-relative, and projected metadata is artboard-relative; neither
+    // can be substituted here without moving the crop away from the pixels.
+    // The projected request already includes instance resizing and overrides.
+    if (shouldTrim === undefined && sourceLayer) {
         let sourceRequest = getNativeExportRequestAt(sourceLayer, requestIndex);
-        let sourceFrame = getLayerFrameRect(sourceLayer);
-        let sourceRequestRect = getNativeRequestRect(sourceRequest);
-        let projectedSourceFrame = getProjectedSourceFrameRect(layer, sourceFrame);
-        let translatedRect = translateSourceRequestRect(projectedSourceFrame, sourceFrame, sourceRequestRect);
-        if (!translatedRect && projectedSourceFrame) {
-            translatedRect = projectedSourceFrame;
-        }
-        if (translatedRect) requestRect = translatedRect;
-        if (sourceRequest && hasNativeMethod(sourceRequest, "shouldTrim")) {
-            shouldTrim = !!sourceRequest.shouldTrim();
-        }
+        if (hasNativeMethod(sourceRequest, "shouldTrim")) shouldTrim = !!sourceRequest.shouldTrim();
     }
 
     return {
@@ -146,22 +210,6 @@ export function getSliceNativeExportOptions(layer: Layer, sourceLayer?: Layer, r
         requestRect,
         shouldTrim,
     };
-}
-
-function getNativeExportRequestAt(layer: Layer, requestIndex: number = 0): any {
-    let nativeLayer = layer ? (layer as any).sketchObject : undefined;
-    if (!nativeLayer || typeof MSExportRequest === "undefined") return undefined;
-    try {
-        let requests = MSExportRequest.exportRequestsFromExportableLayer(nativeLayer);
-        if (!requests) return undefined;
-        if (typeof requests.objectAtIndex == "function") {
-            return requests.count() > requestIndex ? requests.objectAtIndex(requestIndex) : undefined;
-        }
-        if (Array.isArray(requests)) return requests[requestIndex];
-        return requests[requestIndex];
-    } catch (error) {
-        return undefined;
-    }
 }
 
 function getNativeRequestRect(request: any): SMRect | undefined {
@@ -223,78 +271,6 @@ function getNativeRectStructNumber(target: any, parentKey: string, key: string):
     } catch (error) {
         return NaN;
     }
-}
-
-function translateSourceRequestRect(projectedRect?: SMRect, sourceFrame?: SMRect, sourceRequestRect?: SMRect): SMRect | undefined {
-    if (!projectedRect || !sourceFrame || !sourceRequestRect) return undefined;
-    let nextRect = {
-        x: projectedRect.x + (sourceRequestRect.x - sourceFrame.x),
-        y: projectedRect.y + (sourceRequestRect.y - sourceFrame.y),
-        width: sourceRequestRect.width,
-        height: sourceRequestRect.height,
-    };
-    if (![nextRect.x, nextRect.y, nextRect.width, nextRect.height].every(value => isFinite(value))) return undefined;
-    if (nextRect.width <= 0 || nextRect.height <= 0) return undefined;
-    return nextRect;
-}
-
-function getProjectedSourceFrameRect(layer: Layer, sourceFrame?: SMRect): SMRect | undefined {
-    if (!layer || !sourceFrame) return undefined;
-    let parentRect = getProjectedAbsoluteRect(layer.parent as Layer);
-    if (!parentRect) return undefined;
-    let scale = getProjectedParentScale(layer);
-    let nextRect = {
-        x: parentRect.x + sourceFrame.x * scale.x,
-        y: parentRect.y + sourceFrame.y * scale.y,
-        width: sourceFrame.width * scale.x,
-        height: sourceFrame.height * scale.y,
-    };
-    if (![nextRect.x, nextRect.y, nextRect.width, nextRect.height].every(value => isFinite(value))) return undefined;
-    return nextRect;
-}
-
-function getProjectedParentScale(layer: Layer): { x: number, y: number } {
-    let projectedParent = layer ? layer.parent as Layer : undefined;
-    let sourceLayer = getProjectedSourceLayer(layer);
-    let sourceParent = sourceLayer ? sourceLayer.parent as Layer : undefined;
-    let projectedParentFrame = getLayerFrameRect(projectedParent);
-    let sourceParentFrame = getLayerFrameRect(sourceParent);
-    return {
-        x: getSafeScale(projectedParentFrame ? projectedParentFrame.width : NaN, sourceParentFrame ? sourceParentFrame.width : NaN),
-        y: getSafeScale(projectedParentFrame ? projectedParentFrame.height : NaN, sourceParentFrame ? sourceParentFrame.height : NaN),
-    };
-}
-
-function getSafeScale(value: number, base: number): number {
-    if (!isFinite(value) || !isFinite(base) || !base) return 1;
-    let scale = value / base;
-    return isFinite(scale) && scale > 0 ? scale : 1;
-}
-
-function getProjectedAbsoluteRect(layer?: Layer): SMRect | undefined {
-    if (!layer) {
-        return {
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
-        };
-    }
-
-    let projectedRect = (layer as any).__meaxureProjectedRect as SMRect | undefined;
-    if (projectedRect) return projectedRect;
-
-    let frame = getLayerFrameRect(layer);
-    if (!frame) return undefined;
-
-    let parentRect = getProjectedAbsoluteRect(layer.parent as Layer);
-    if (!parentRect) return undefined;
-    return {
-        x: parentRect.x + frame.x,
-        y: parentRect.y + frame.y,
-        width: frame.width,
-        height: frame.height,
-    };
 }
 
 function parseExportFormat(format: ExportFormat, layer: Layer): SMExportFormat {

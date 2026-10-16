@@ -1,7 +1,7 @@
 {
   "name": "sketch-meaxure-plus",
   "description": "Make it a fun to create spec for developers and teammates",
-  "version": "2026.1.1",
+  "version": "2026.3.15",
   "engines": {
     "sketch": ">=69.0"
   },
@@ -20,6 +20,7 @@
     ]
   },
   "scripts": {
+    "test": "node scripts/test.js",
     "build": "export NODE_OPTIONS=--openssl-legacy-provider; node scripts/buildTmpl.js && skpm-build",
     "watch": "export DEBUG=1 NODE_OPTIONS=--openssl-legacy-provider; skpm-build --watch",
     "start": "export DEBUG=1 NODE_OPTIONS=--openssl-legacy-provider; skpm-build --watch --run",

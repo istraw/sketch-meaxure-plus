@@ -1,0 +1,31 @@
+const assert=require('assert'),fs=require('fs'),vm=require('vm'),ts=require('typescript');
+let opened=0,closed=0,serial=0,fail=false;const captured={};let renderRemoved=0,renderRoot;
+const nativeArray=v=>({count:()=>v.length,objectAtIndex:i=>v[i]});
+function definition(id){return {objectID:()=>id,copy:()=>({setObjectID:newId=>{assert.strictEqual(newId,id)},objectID:()=>id})};}
+const original={colorSpace:'SRGB',sharedLayerStyles:[{sketchObject:definition('local')},{sketchObject:definition('foreign')}],sharedTextStyles:[{sketchObject:definition('text')}],sketchObject:{fileType:()=>'sketch-document',documentData:()=>({sharedSwatches:()=>({objects:()=>nativeArray([definition('swatch')])})})},pages:[{id:'source-page'}]};
+const native={documentData:()=>({sharedObjectContainerOfType:t=>({addSharedObjects:v=>captured[t]=v}),sharedSwatches:()=>({addSharedObjects:v=>captured.swatches=v})})};
+const doc={pages:[{id:'scratch-page'}],close(){closed++}};
+const code=ts.transpileModule(fs.readFileSync('src/meaxure/export/projectionHost.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2015}}).outputText;
+const imports={'./tempLayers':{tempLayers:{add:(l,hidden=true)=>{l.hidden=hidden},exists:()=>true,remove:l=>l.remove()}},'../../sketch':{sketch:{Types:{Slice:'Slice',Page:'Page'},Artboard:class{constructor(o){Object.assign(this,o);this.id='host'+serial++;this.background={enabled:true,includedInExport:true}}},Rectangle:class{constructor(x,y,width,height){Object.assign(this,{x,y,width,height})}}}},'../../sketch/compat':{wrapDocument:()=>doc,wrapLayer:o=>o,getChildLayers:l=>l.layers||[]},'../common/context':{context:{document:original}},'../common/logger':{logger:{log(){}}}};
+const box={exports:{},require:n=>imports[n],MOPointer:{alloc:()=>({init:()=>({value:()=>null})})},NSDocumentController:{sharedDocumentController:()=>({openUntitledDocumentAndDisplay_error(){throw Error('must not register a visible document');},makeUntitledDocumentOfType_error(type){assert.strictEqual(type,'sketch-document');opened++;if(fail)throw Error('unavailable');return native;}})}};
+vm.runInNewContext(code,box);const api=box.exports;const source={id:'board',frame:{x:10,y:20,width:300,height:400}};const host=api.getProjectionHost(source);assert.notStrictEqual(host,source);assert.strictEqual(host.background.enabled,false);assert.strictEqual(host.background.includedInExport,false);assert.strictEqual(host.parent,doc.pages[0]);assert.strictEqual(api.getProjectionHost(source),host);assert.strictEqual(api.getProjectionHost(host),host);assert.strictEqual(opened,1);assert.strictEqual(doc.colorSpace,'SRGB');assert.deepStrictEqual(Array.from(captured[1],x=>x.objectID()),['local','foreign']);assert.strictEqual(captured[2][0].objectID(),'text');assert.strictEqual(captured.swatches[0].objectID(),'swatch');assert.strictEqual(original.pages.length,1);
+const leaf={id:'leaf',name:'slice',__meaxureProjectedRect:{x:12,y:13,width:14,height:15},getParentArtboard:()=>host};
+const root={id:'projected-root',name:'#tmp-symbol',parent:host,layers:[leaf],sketchObject:{copy:()=> (renderRoot={id:'render-root',name:'#tmp-symbol',layers:[{id:'render-leaf'}],remove(){renderRemoved++}})}};leaf.parent=root;
+const rendered=api.getProjectionRenderLayer(leaf);assert.strictEqual(rendered.id,'render-leaf');assert.strictEqual(renderRoot.parent,host,'rendering must stay in the small windowless document');assert.strictEqual(renderRoot.hidden,false,'scene copy must be visible to render Slice pixels');assert.strictEqual(rendered.__meaxureProjectedRect,leaf.__meaxureProjectedRect);assert.strictEqual(api.getProjectionRenderLayer(leaf),rendered);
+api.releaseProjectionRenderLayers(root);assert.strictEqual(renderRemoved,1);api.getProjectionRenderLayer(leaf);
+api.closeProjectionHost();assert.strictEqual(renderRemoved,2);assert.strictEqual(closed,1);
+fail=true;assert.strictEqual(api.getProjectionHost(source),source);assert.strictEqual(api.getProjectionHost(source),source);assert.strictEqual(opened,2,'failed isolation should not retry for every layer');api.closeProjectionHost();fail=false;assert.notStrictEqual(api.getProjectionHost(source),source);api.closeProjectionHost();assert.strictEqual(closed,2);
+// A detached projection in a plain source Group has no parent artboard.
+const directBoard={id:'source-group',type:'Group'};
+const directLeaf={id:'direct-leaf',getParentArtboard:()=>undefined};
+const directRoot={id:'direct-root',hidden:true,parent:directBoard,layers:[directLeaf],sketchObject:{copy:()=>({id:'direct-copy',layers:[{id:'direct-render-leaf'}],remove(){renderRemoved++}})}};
+directLeaf.parent=directRoot;
+imports['./tempLayers'].tempLayers.exists=l=>l===directRoot;
+const directRender=api.getProjectionRenderLayer(directLeaf);
+assert.strictEqual(directRender.id,'direct-render-leaf');
+assert.strictEqual(directRoot.hidden,true,'original projection stays hidden');
+const ordinary={id:'ordinary',parent:directBoard,getParentArtboard:()=>undefined};
+assert.strictEqual(api.getProjectionRenderLayer(ordinary),ordinary,'ordinary source layers stay untouched');
+api.releaseProjectionRenderLayers(directRoot);
+console.log('PASS: source Group and detached projection use a visible owned render copy');
+console.log('PASS: unregistered windowless document, local/foreign styles and swatches copied, host reuse, source untouched, owned close, bounded failure and retry');

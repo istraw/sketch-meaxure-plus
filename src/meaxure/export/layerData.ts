@@ -1,8 +1,11 @@
+import { getLayerStates, clearLayerStateCache } from "./layerStates";
 // Copyright 2020 Jebbs. All rights reserved.
 // Use of this source code is governed by the MIT
 // license that can be found in the LICENSE file.
 
-import { ArtboardData, LayerData, SMType, LayerStates } from "../interfaces";
+import { checkpointLayer, recordLayer, isExportCancelled, measureExportPhase, measureExportPhaseAsync } from "./session";
+import { getNativeExportRequestAt } from "./nativeRequest";
+import { ArtboardData, LayerData, SMType } from "../interfaces";
 import { sketch } from "../../sketch";
 import { toHTMLEncode, emojiToEntities } from "../helpers/helper";
 import { getTextFragment } from "./textFragment";
@@ -24,19 +27,40 @@ import { getChildLayers } from "../../sketch/compat";
 import { context } from "../common/context";
 import { TextBehaviour } from "../../sketch/text";
 import { getProjectedSourceLayer, getLayerFrameRect, shouldPreferProjectedSourceSlice } from "./projectedSource";
+import { getProjectionHost } from "./projectionHost";
 
-export function getLayerData(artboard: Artboard, layer: Layer | LayerPlaceholder, data: ArtboardData, byInfluence: boolean, symbolLayer?: Layer) {
+export function getLayerData(artboard: Artboard, layer: Layer | LayerPlaceholder, data: ArtboardData, byInfluence: boolean, symbolLayer?: Layer): Promise<void> | void {
     if (layer instanceof LayerPlaceholder) {
         dealWithPlaceholder(layer);
         return;
     }
-    // compatible with meaxure markers
-    safeLayerStep(layer, 'rename marker', () => renameIfIsMarker(layer));
-    // stopwatch.tik('before updateMaskStackBeforeLayer');
-    safeLayerStep(layer, 'update mask stack', () => updateMaskStackBeforeLayer(layer));
-    safeLayerStep(layer, 'update tint stack', () => updateTintStackBeforeLayer(layer));
-    getLayerData2(artboard, layer, data, byInfluence, symbolLayer)
-    // stopwatch.tik('update stack');
+    const checkpoint = checkpointLayer(layer.name);
+    if (checkpoint) return checkpoint.then(() => collectLayerData(artboard, layer, data, byInfluence, symbolLayer));
+    return collectLayerData(artboard, layer, data, byInfluence, symbolLayer);
+}
+
+function collectLayerData(artboard: Artboard, layer: Layer, data: ArtboardData, byInfluence: boolean, symbolLayer?: Layer): Promise<void> | void {
+    let started = Date.now();
+    try {
+        // compatible with meaxure markers
+        safeLayerStep(layer, 'rename marker', () => {
+            if (renameIfIsMarker(layer)) clearLayerStateCache();
+        });
+        // stopwatch.tik('before updateMaskStackBeforeLayer');
+        safeLayerStep(layer, 'update mask stack', () => updateMaskStackBeforeLayer(layer));
+        safeLayerStep(layer, 'update tint stack', () => updateTintStackBeforeLayer(layer));
+        const pending = getLayerData2(artboard, layer, data, byInfluence, symbolLayer);
+        if (pending) return pending.then(() => {
+            recordLayer(layer.name, started);
+        }, error => {
+            recordLayer(layer.name, started);
+            throw error;
+        });
+    } catch (error) {
+        recordLayer(layer.name, started);
+        throw error;
+    }
+    recordLayer(layer.name, started);
 }
 
 function dealWithPlaceholder(p: LayerPlaceholder) {
@@ -49,9 +73,14 @@ function dealWithPlaceholder(p: LayerPlaceholder) {
     }
 }
 
-function getLayerData2(artboard: Artboard, layer: Layer, data: ArtboardData, byInfluence: boolean, symbolLayer?: Layer) {
+function getLayerData2(artboard: Artboard, layer: Layer, data: ArtboardData, byInfluence: boolean, symbolLayer?: Layer): Promise<void> | void {
+    // Hidden and excluded descendants often make up most of an expanded
+    // Symbol. Reject them before native geometry/text measurement. Notes
+    // intentionally bypass these filters, as in the original export order.
+    let isNoteCandidate = layer.type == sketch.Types.Group && layer.name.startsWith('#meaxure-note-');
+    if (!isNoteCandidate && shouldSkipLayer(layer)) return;
     // stopwatch.tik('updateMaskStackBeforeLayer');
-    let layerRect = getSMRect(layer, artboard, byInfluence);
+    let layerRect = measureExportPhase('layer geometry', () => getSMRect(layer, artboard, byInfluence));
     layerRect = applyMasks(layer, layerRect, artboard);
     if (!layerRect) {
         return;
@@ -63,19 +92,9 @@ function getLayerData2(artboard: Artboard, layer: Layer, data: ArtboardData, byI
         return;
     }
     // stopwatch.tik('make notes');
-    let layerStates = getLayerStates(layer);
-    // stopwatch.tik('getLayerStates');
-    if (!isExportable(layer) ||
-        layerStates.isHidden ||
-        (layerStates.isLocked && layer.type != sketch.Types.Slice) ||
-        layerStates.isEmptyText ||
-        layerStates.isInSlice ||
-        layerStates.isMeaXure ||
-        layerStates.isInShapeGroup) {
-        return;
-    }
+    if (isNoteCandidate && shouldSkipLayer(layer)) return;
 
-    let layerType = getSMType(layer);
+    let layerType = measureExportPhase('layer type', () => getSMType(layer));
     // stopwatch.tik('get layerType');
 
     let layerData = <LayerData>{
@@ -108,22 +127,53 @@ function getLayerData2(artboard: Artboard, layer: Layer, data: ArtboardData, byI
     safeLayerStep(layer, 'get slice', () => getSlice(layer, layerData, symbolLayer));
     // stopwatch.tik('getSlice');
     if (layerData.type == SMType.symbol) {
-        let symbolProjected = safeValue(layer, 'get symbol', () => getSymbol(artboard, layer as SymbolInstance, layerData, data, byInfluence), false);
-        if (symbolProjected) {
-            let index = data.layers.indexOf(layerData);
-            if (index >= 0) data.layers.splice(index, 1);
-            return;
-        }
-        safeLayerStep(layer, 'expand detached symbol children', () => exportDetachedSymbolChildren(artboard, layer, data, byInfluence));
+        return exportSymbolData(artboard, layer, layerData, data, byInfluence);
     }
-    safeLayerStep(layer, 'get text fragment', () => getTextFragment(artboard, layer as Text, data));
-    // stopwatch.tik('getTextFragment');
+    // Most layers have no rich-text fragments. Keep that path synchronous:
+    // resolved promises can still yield to Sketch's expensive native run loop.
+    try {
+        const started = Date.now();
+        const pending = getTextFragment(artboard, layer as Text, data);
+        if (pending) return measureExportPhaseAsync('text fragments', () => pending, started).catch(error => {
+            if (isExportCancelled(error)) throw error;
+            logger.log(3, `Cannot export text fragments for ${layer.name}`, error);
+        });
+    } catch (error) {
+        if (isExportCancelled(error)) throw error;
+        logger.log(3, `Cannot export text fragments for ${layer.name}`, error);
+    }
 }
 
-function exportDetachedSymbolChildren(artboard: Artboard, layer: Layer, data: ArtboardData, byInfluence: boolean) {
+async function exportSymbolData(artboard: Artboard, layer: Layer, layerData: LayerData, data: ArtboardData, byInfluence: boolean) {
+    let symbolProjected = false;
+    try {
+        symbolProjected = await getSymbol(artboard, layer as SymbolInstance, layerData, data, byInfluence);
+    } catch (error) {
+        if (isExportCancelled(error)) throw error;
+        logger.log(3, `Cannot expand symbol ${layer.name}`, error);
+    }
+    if (symbolProjected) {
+        let index = data.layers.indexOf(layerData);
+        if (index >= 0) data.layers.splice(index, 1);
+        return;
+    }
+    await exportDetachedSymbolChildren(artboard, layer, data, byInfluence);
+}
+
+function shouldSkipLayer(layer: Layer): boolean {
+    if (!isExportable(layer)) return true;
+    let state = measureExportPhase('layer states', () => getLayerStates(layer));
+    return state.isHidden || (state.isLocked && layer.type != sketch.Types.Slice)
+        || state.isEmptyText || state.isInSlice || state.isMeaXure || state.isInShapeGroup;
+}
+
+async function exportDetachedSymbolChildren(artboard: Artboard, layer: Layer, data: ArtboardData, byInfluence: boolean) {
     if (layer.type != sketch.Types.SymbolInstance) return;
     if ((layer as SymbolInstance).master) return;
-    getChildLayers(layer).forEach(child => getLayerData(artboard, child, data, byInfluence));
+    for (let child of getChildLayers(layer)) {
+        const pending = getLayerData(artboard, child, data, byInfluence);
+        if (pending) await pending;
+    }
 }
 
 function getSMType(layer: Layer): SMType {
@@ -233,20 +283,15 @@ function getSMRect(layer: Layer, artboard: Artboard, byInfluence: boolean): SMRe
         layerFrame = layer.frame.changeBasis({ from: layer.parent as Group, to: artboard });
     }
     if (layer.type == sketch.Types.Text) {
-        if (shouldUseTextFrameRect(layer as Text)) {
-            // Sketch documents store the design-time text container in `Text.frame`.
-            // When lineHeight is automatic (`style.lineHeight == null` in the official
-            // API), measuring glyph/fragments shrinks the annotation box to the ink
-            // bounds, which makes 14pt containers show up as 10pt in exports.
-            return normalizeRect({
-                x: layerFrame.x,
-                y: layerFrame.y,
-                width: layerFrame.width,
-                height: layerFrame.height,
-            });
-        }
-        let visualRect = getPreferredTextVisualRect(layer as Text, artboard, layerFrame);
-        if (visualRect) return snapRectToGrid(visualRect);
+        // Annotation geometry describes the saved design container, even
+        // with an explicit line height. Glyph bounds describe ink and shrink
+        // 32px labels such as 可买/可用 to 23–25px.
+        return normalizeRect({
+            x: layerFrame.x,
+            y: layerFrame.y,
+            width: layerFrame.width,
+            height: layerFrame.height,
+        });
     }
     let rect = {
         x: layerFrame.x,
@@ -262,7 +307,7 @@ function getMeasuredTextRect(text: Text, artboard: Artboard, layerFrame: Rectang
     if (!shouldMeasureTextByFit(text, layerFrame)) return undefined;
 
     let tempGroup = new sketch.Group({
-        parent: artboard,
+        parent: getProjectionHost(artboard),
         name: "#tmp-measure-text",
         frame: new sketch.Rectangle(0, 0, 0, 0),
     });
@@ -289,13 +334,16 @@ function getMeasuredTextRect(text: Text, artboard: Artboard, layerFrame: Rectang
 }
 
 function getPreferredTextVisualRect(text: Text, artboard: Artboard, layerFrame: Rectangle): SMRect | undefined {
-    let candidates = [
-        getGlyphBoundsRect(text, layerFrame),
-        getMeasuredTextRect(text, artboard, layerFrame),
-        getTextFragmentRect(text, layerFrame),
-    ].filter(Boolean);
+    // Fitting a duplicate mutates the native document. Only pay that cost
+    // when the cheaper glyph bounds cannot supply a usable rectangle.
+    let measurements = [
+        () => getGlyphBoundsRect(text, layerFrame),
+        () => getMeasuredTextRect(text, artboard, layerFrame),
+        () => getTextFragmentRect(text, layerFrame),
+    ];
 
-    for (let candidate of candidates) {
+    for (let measure of measurements) {
+        let candidate = measure();
         if (isReasonableTextVisualRect(text, layerFrame, candidate)) return candidate;
     }
     return undefined;
@@ -406,13 +454,6 @@ function shouldCaptureTextBoundsDebug(text: Text, layerRect: SMRect): boolean {
     return layerRect.y >= 300 && layerRect.y <= 340 && text.name == "TXT";
 }
 
-function shouldUseTextFrameRect(text: Text): boolean {
-    if (!text) return false;
-    if (isTempProjectedSymbolText(text)) return true;
-    if (isTempFragmentText(text)) return true;
-    return !text.style || text.style.lineHeight === null || text.style.lineHeight === undefined;
-}
-
 function getNativeRect(text: Text, method: string): Rectangle | undefined {
     let nativeText = (text as any).sketchObject;
     if (!nativeText || !hasNativeMethod(nativeText, method)) return undefined;
@@ -513,7 +554,7 @@ function getTextFragmentRect(text: Text, layerFrame: Rectangle): SMRect | undefi
 
 function safeRemove(layer?: Layer) {
     try {
-        if (layer) layer.remove();
+        if (layer) tempLayers.remove(layer);
     } catch (error) {
         // ignore cleanup errors
     }
@@ -571,13 +612,8 @@ function roundRectToGrid(rect: SMRect): SMRect {
 }
 
 function getDisplayRect(text: Text, artboard: Artboard, fallbackRect: SMRect): SMRect {
-    if (!isTempProjectedSymbolText(text)) return fallbackRect;
-    let projectedRect = (text as any).__meaxureProjectedRect as SMRect | undefined;
-    let rawFrame = projectedRect
-        ? new sketch.Rectangle(projectedRect.x, projectedRect.y, projectedRect.width, projectedRect.height)
-        : text.frame.changeBasis({ from: text.parent as Group, to: artboard });
-    let visualRect = getPreferredTextVisualRect(text, artboard, rawFrame);
-    if (visualRect) return snapRectToGrid(visualRect);
+    // The viewer's selection box must use the same container as its dimensions.
+    // Measuring projected Symbol text by ink would shrink that box again.
     return fallbackRect;
 }
 
@@ -603,7 +639,7 @@ function getSliceDisplayRect(layer: Layer, fallbackRect: SMRect): SMRect {
         return nativeOptions && nativeOptions.requestRect ? normalizeRect(nativeOptions.requestRect) : fallbackRect;
     }
 
-    let request = getPrimaryExportRequest(nativeLayer);
+    let request = getNativeExportRequestAt(layer);
     if (!request) {
         return nativeOptions && nativeOptions.requestRect ? normalizeRect(nativeOptions.requestRect) : fallbackRect;
     }
@@ -781,18 +817,6 @@ function getProjectedAbsoluteRect(layer?: Layer): SMRect | undefined {
     return undefined;
 }
 
-function getPrimaryExportRequest(nativeLayer: any): any {
-    try {
-        let requests = MSExportRequest.exportRequestsFromExportableLayer(nativeLayer);
-        if (!requests) return undefined;
-        if (typeof requests.count == "function") return requests.count() > 0 ? requests.objectAtIndex(0) : undefined;
-        if (Array.isArray(requests)) return requests[0];
-        return requests[0];
-    } catch (error) {
-        return undefined;
-    }
-}
-
 function getNativeSliceRect(method: string, ancestry: any, ...args: any[]): SMRect | undefined {
     if (!ancestry || !hasNativeMethod(MSSliceTrimming, method)) return undefined;
     try {
@@ -897,21 +921,6 @@ function rectArea(rect: SMRect): number {
     return Math.max(0, rect.width || 0) * Math.max(0, rect.height || 0);
 }
 
-function isTempProjectedSymbolText(layer: Layer): boolean {
-    let current = layer ? layer.parent as Group : undefined;
-    while (current) {
-        if (tempLayers.exists(current) && String(current.name || "").indexOf("#tmp-symbol-") >= 0) {
-            return true;
-        }
-        current = current.parent as Group;
-    }
-    return false;
-}
-
-function isTempFragmentText(layer: Layer): boolean {
-    return !!(layer as any).__meaxureFragmentText;
-}
-
 function isExportable(layer: Layer) {
     if (isStackLayout(layer)) return true;
     return layer.type == sketch.Types.Text ||
@@ -923,38 +932,10 @@ function isExportable(layer: Layer) {
         layer.type == sketch.Types.SymbolInstance ||
         layer.type == sketch.Types.HotSpot
 }
-function getLayerStates(layer: Layer): LayerStates {
-    let isHidden = false;
-    let isLocked = false;
-    let isInSlice = false;
-    let isEmptyText = false;
-    let isMeaXure = false;
-    let isInShapeGroup = false;
-
-    while (layer.type != sketch.Types.Artboard && layer.type != sketch.Types.SymbolMaster) {
-        let parent = layer.parent as Group;
-        if (!isMeaXure) isMeaXure = layer.name.startsWith('#meaxure-');
-        // if parents is shape, this is in shape group
-        if (!isInShapeGroup) isInShapeGroup = parent.type == sketch.Types.Shape;
-        if (!isHidden) isHidden = layer.hidden && !tempLayers.exists(layer);
-        if (!isLocked) isLocked = layer.locked;
-        if (!isInSlice) isInSlice = parent.type == sketch.Types.Group && parent.exportFormats.length > 0;
-        if (!isEmptyText) isEmptyText = layer.type == sketch.Types.Text && (layer as Text).isEmpty
-        layer = parent;
-    }
-    return {
-        isHidden: isHidden,
-        isLocked: isLocked,
-        isInSlice: isInSlice,
-        isMeaXure: isMeaXure,
-        isEmptyText: isEmptyText,
-        isInShapeGroup: isInShapeGroup
-    }
-}
 
 function safeLayerStep(layer: Layer, step: string, fn: () => void) {
     try {
-        fn();
+        measureExportPhase('layer ' + step, fn);
     } catch (error) {
         logger.log(3, `Skip step "${step}" for layer "${layer.name}".`, error);
     }
@@ -962,7 +943,7 @@ function safeLayerStep(layer: Layer, step: string, fn: () => void) {
 
 function safeValue<T>(layer: Layer, step: string, fn: () => T, fallback: T): T {
     try {
-        return fn();
+        return measureExportPhase('layer ' + step, fn);
     } catch (error) {
         logger.log(3, `Use fallback for step "${step}" on layer "${layer.name}".`, error);
         return fallback;

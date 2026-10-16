@@ -1,0 +1,13 @@
+const assert=require('assert'),fs=require('fs'),vm=require('vm'),ts=require('typescript');
+const code=ts.transpileModule(fs.readFileSync('src/sketch/compat.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2015}}).outputText;
+const box={exports:{},require:()=>({sketch:{}})};vm.runInNewContext(code,box);
+let reads=0;const object={value:7,get method(){reads++;return function(n){return this.value+n;};}};
+for(let i=0;i<10000;i++)assert.strictEqual(box.exports.callNative(object,'method',0,3),10);
+assert.strictEqual(reads,10000,'native method metadata must be read once per call');
+assert(box.exports.hasNativeMethod(object,'method'));assert.strictEqual(reads,10001);
+assert.strictEqual(box.exports.callNative(null,'method',42),42);
+const proxy=function(n){return this.value+n;};proxy.apply=undefined;
+assert.strictEqual(box.exports.callNative({value:5,method:proxy},'method',0,2),7);
+assert.strictEqual(box.exports.callNative({get method(){throw Error('unavailable');}},'method',42),42);
+assert.throws(()=>box.exports.callNative({method(){throw Error('render failure');}},'method',42),/render failure/);
+console.log('PASS: 10000 native calls read metadata once, preserve receiver, fallback and execution errors');

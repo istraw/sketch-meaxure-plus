@@ -1333,3 +1333,27 @@ main {
 .cursor.moving {
     background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAiCAMAAAAJbCvNAAABMlBMVEUAAAAAAAA2NjYsLCwCAgIAAAAAAAAMDAwBAQECAgIBAQECAgIBAQEBAQEAAAAAAAAAAAA5OTkgICAICAgAAAAcHBwCAgIAAAAAAAAAAAAAAAAAAABDQ0M8PDwxMTE0NDQVFRUCAgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAPDw8DAwMAAAAAAAAAAAAAAAAAAAAAAAAAAAD///8AAABhYWEcHBz6+vr39/dMTEzs7Oy8vLy4uLhWVlYqKiooKCj09PTw8PC1tbWnp6d2dnZZWVn8/Pzp6enj4+Pd3d3a2trNzc2tra2pqammpqaKioqAgIBzc3NwcHBmZmZdXV1TU1NHR0c+Pj7W1tbR0dHGxsbAwMCampqSkpKPj4+GhoZycnJsbGwkJCTy91wiAAAANnRSTlMAPP7+/ZcN/Pnr487Kv7QlEv7+/fz71jk2GAcE/v7+/fzzpaCUkGZZQTEsIAn826uEg3JtXFGryOxIAAABkElEQVR4AeXS1XLbQBjF8RXIDHbNdiBpOCnDOa4kg2Oww9w2KUPf/xW6s8q2sTXT6X1+t99/NJozK+6lR8ZmRPzDZpxc3sg9y2Sez3aNl+mUsx23TjpzxbJtmnaqMR08ZO8mGuNn4JA8AU75YiXl5ISW5SXwgTwAUGIfcAuM3thpoRnsAJhnC8DcY0gWj3HBmg5qPAdw1nMBfJ9Aai4AQ1aFllzENNcD2jSEsuOkEvyIEB1k44XrEicI6bCigtXoIbzFN5D2PMAbAG4L0im3VVD2AQyOIF3lgeY88MOC9JXBEEkf2rsHwHtLRup749jtikvTQU8Hflkor/hJB00ZdHUwKKwKJRLP70FRh+7ubXDOLRHY4GU4wEE0I7Q1foPyVh4mQeCay1nxx1OeqWC8K6MF4MrCmK/FX/W0PQKCgfr7gLd/ZDvirkiaX3DXRTE381wzHEFp5UvHQPeJmNFImlD8WOJXH35SzFpZGnba7eFPrleK1yMzEQocBtaEWI+R4aC+Va0YRrWm/jm7Uxf/5zeExWvZghlTSgAAAABJRU5ErkJggg==');
 }
+
+/* Offline asset download controls */
+.asset-export { font-size: 13px; }
+.asset-preview { display:flex;align-items:center;justify-content:center;min-height:128px;padding:16px;margin-bottom:16px;border:1px solid #dce1e8;border-radius:6px;background:repeating-conic-gradient(#edf0f5 0% 25%,#fff 0% 50%) 0 / 16px 16px; }
+.asset-preview img { display:block;width:100%;height:128px;object-fit:contain; }
+.asset-setting { display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0;font-weight:600; }
+.asset-setting select { width:126px;padding:8px;border:1px solid #cbd2dc;border-radius:5px;background:#30343d;color:#fff;font:inherit; }
+.asset-scales { border:0;border-bottom:1px solid #dce1e8;margin:0 0 16px;padding:0 0 12px;min-width:0; }
+.asset-scales legend { position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%); }
+.asset-scale { display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;cursor:pointer; }
+.asset-scale span { display:flex;align-items:center;gap:8px; }
+.inspector .asset-scale input { appearance:auto; -webkit-appearance:checkbox; width:16px;height:16px;margin:0;padding:0;accent-color:#506bfa; }
+.asset-scale small { color:#788495;white-space:nowrap;font-size:11px; }
+.asset-help,.asset-status { font-size:11px;line-height:1.6;color:#788495;margin:10px 0; }
+.asset-download { width:100%;padding:12px;border:0;border-radius:6px;background:#506bfa;color:#fff;font-size:14px;font-weight:600;cursor:pointer; }
+.asset-download:disabled { opacity:.5;cursor:wait; }
+.asset-export :focus-visible { outline:2px solid #506bfa;outline-offset:3px; }
+
+.inspector { width:320px;right:-320px; }
+.asset-scale small { font-size:12px; }
+/* Closed unit menus must never intercept clicks on the download panel. */
+.unit-box ul { visibility:hidden;pointer-events:none; }
+.unit-box:focus ul { visibility:visible;pointer-events:auto; }
+header .header-right { width:320px;flex-shrink:0; }

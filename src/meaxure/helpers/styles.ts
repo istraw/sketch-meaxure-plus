@@ -5,6 +5,7 @@
 import { BorderData, SMFillData, SMShadow, SMGradient, SMGradientStop, shadowType } from "../interfaces";
 import { SMColor } from "../interfaces";
 import { sketch } from "../../sketch";
+import { callNative, hasNativeMethod } from "../../sketch/compat";
 
 export function getBordersFromStyle(style: Style): BorderData[] {
     let bordersData: BorderData[] = [];
@@ -144,8 +145,29 @@ export function parseGradient(gradient: Gradient): SMGradient {
 }
 
 export function getLayerRadius(layer: Layer): number[] {
+    if (![sketch.Types.ShapePath, sketch.Types.Shape, sketch.Types.Group,
+        sketch.Types.Artboard, sketch.Types.SymbolMaster].includes(layer.type as any)) return undefined;
+    try {
+        // Sketch 2026 stores corner radii on MSStyleCorners. Read the native
+        // style without invoking the SDK getter that creates missing corners.
+        const style = layer.style;
+        const corners = callNative<any>(style && style.sketchObject, 'corners', undefined);
+        const radii = callNative<any>(corners, 'radii', undefined);
+        if (radii) {
+            const count = hasNativeMethod(radii, 'count') ? Number(radii.count()) : radii.length;
+            const nativeArray = hasNativeMethod(radii, 'objectAtIndex');
+            const values: number[] = [];
+            for (let i = 0; i < count; i++) {
+                values.push(Number(nativeArray ? radii.objectAtIndex(i) : radii[i]));
+            }
+            if (values.length && values.every(value => isFinite(value) && value >= 0)) return values;
+        }
+    } catch (error) { /* retain compatibility with older style models */ }
     if (layer.type !== sketch.Types.ShapePath) return undefined;
-    return (layer as ShapePath).radius;
+    try {
+        const legacy = (layer as ShapePath).radius;
+        return legacy && legacy.length && legacy.every(value => isFinite(value) && value >= 0) ? legacy : undefined;
+    } catch (error) { return undefined; }
 }
 
 /**

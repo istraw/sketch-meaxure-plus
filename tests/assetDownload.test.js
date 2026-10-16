@@ -1,0 +1,52 @@
+const assert=require('assert'),fs=require('fs'),vm=require('vm'),ts=require('typescript');
+function load(file,imports={}) {
+ const code=ts.transpileModule(fs.readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2017}}).outputText;
+ const box={exports:{},require:n=>{assert(n in imports,n);return imports[n]},TextEncoder,DataView,Uint8Array,Blob};
+ vm.runInNewContext(code,box);return box.exports;
+}
+const model=load('ui/download/model.ts');
+const src={width:20,height:20};
+assert.deepStrictEqual({...model.dimensions(src,1.5)},{width:30,height:30});
+assert.deepStrictEqual({...model.dimensions(src,3)},{width:60,height:60});
+assert.throws(()=>model.dimensions({width:100000,height:100000},4));
+assert.strictEqual(model.filename('加号/plus','ios',2,'png'),'加号_plus@2x.png');
+assert.strictEqual(model.filename('Plus Icon','android',1.5,'webp'),'drawable-hdpi/plus_icon.webp');
+assert.strictEqual(model.filename('icon','web',1,'jpg'),'icon.jpg');
+assert.strictEqual(model.scales.android.length,5);
+const source={...src,name:'plus',dataURL:'data:image/svg+xml;base64,c3Zn',format:'svg',containsBitmap:false};
+const render=load('ui/render/inspector/exportable.ts',{'../../common':{project:{downloadSources:{test:source}}},'../../download/model':model,'./shared':{propertyType:(t,s)=>s}});
+let html=render.renderExportable({exportable:[{sourceID:'test'}]});
+assert(html.includes('iOS')&&html.includes('Android')&&html.includes('Web'));
+assert(html.includes('value="webp"')&&html.includes('value="svg"')&&html.includes('value="jpg"'));
+assert(html.includes('40 × 40 px'));
+assert.strictEqual((html.match(/type="checkbox"/g)||[]).length,3);
+model.preferences.platform='android';
+html=render.renderAssetControls('test',source);assert(html.includes('xxxhdpi'));assert(html.includes('30 × 30 px'));
+// SVG is a single 1x download on every platform, independent of raster checks.
+model.preferences.format='svg';
+const saved=model.preferences.selected.android.slice();
+html=render.renderAssetControls('test',source);
+assert(html.includes('class="asset-scales" hidden disabled'));
+assert(!html.includes('type="checkbox" value="1" checked'));
+assert(html.includes('SVG 固定使用 1x 尺寸'));
+assert(!html.includes('多选尺寸将打包为 ZIP'));
+assert.deepStrictEqual(Array.from(model.downloadScales('svg',[])),[1]);
+assert.deepStrictEqual(Array.from(model.downloadScales('svg',[2,3,4])),[1]);
+assert.strictEqual(model.filename('Plus Icon','android',4,'svg'),'Plus Icon.svg');
+model.preferences.format='png';
+html=render.renderAssetControls('test',source);
+assert(!html.includes('class="asset-scales" hidden'));
+assert.deepStrictEqual(model.preferences.selected.android,saved);
+assert(html.includes('type="checkbox" value="1.5" checked'));
+assert.deepStrictEqual(Array.from(model.downloadScales('png',[1.5,3])),[1.5,3]);
+console.log('PASS: SVG hides density choices and downloads one 1x file; raster selections survive format changes');
+const zip=load('ui/download/zip.ts');
+(async()=>{
+ const blob=zip.zipFiles([{name:'drawable-hdpi/加号.png',bytes:new Uint8Array([1,2,3])}]);
+ const b=Buffer.from(await blob.arrayBuffer());
+ assert.strictEqual(b.readUInt32LE(0),0x04034b50);
+ assert.strictEqual(b.readUInt32LE(14),0x55bc801d);
+ assert.strictEqual(b.readUInt32LE(b.length-22),0x06054b50);
+ assert.strictEqual(b.readUInt16LE(6),0x800);
+ console.log('PASS: platform density dimensions, safe filenames, source-backed format controls, raster bounds, ZIP CRC/UTF-8 records');
+})().catch(e=>{console.error(e);process.exitCode=1});

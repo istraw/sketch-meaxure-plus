@@ -55,9 +55,8 @@ function processingArtboard(artboard: Artboard) {
 }
 
 export function renameIfIsMarker(layer: Layer) {
-    if (layer.type !== sketch.Types.Group) return;
-    if (renameMarkerV1(layer)) return;
-    renameMarkerV2(layer);
+    if (layer.type !== sketch.Types.Group) return false;
+    return renameMarkerV1(layer) || renameMarkerV2(layer);
 }
 
 function renameMarkerV2(mark: Layer): boolean {

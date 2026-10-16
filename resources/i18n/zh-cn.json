@@ -1,4 +1,6 @@
 {
+  "Export resolution": "设计倍率",
+  "Enter a number greater than 0": "请输入大于 0 的数值",
 	"Coordinate": "坐标",
 	"Overlay": "高亮区域",
 	"Top Width": "宽度-顶部",

@@ -19,8 +19,8 @@ export function inspector() {
         renderFont(layerData),
         renderBorders(layerData),
         renderShadows(layerData),
-        renderCodeTemplate(layerData),
         renderExportable(layerData),
+        renderCodeTemplate(layerData),
     ];
     let inspector = document.querySelector('#inspector');
     inspector.classList.add('active');

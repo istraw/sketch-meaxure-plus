@@ -13,6 +13,10 @@ import { callNative } from "../../sketch/compat";
 import { hasNativeMethod } from "../../sketch/compat";
 import { wrapLayer } from "../../sketch/compat";
 import { TextBehaviour } from "../../sketch/text";
+import { clearSymbolTreeCache, getCachedSymbolRoots, getCachedSymbolLayer } from "./symbolTreeCache";
+import { getIndexedExpandedOverrides, clearSymbolOverrideIndex } from "./symbolOverrides";
+import { measureExportPhase } from "./session";
+import { getProjectionHost, releaseProjectionRenderLayers, closeProjectionHost } from "./projectionHost";
 
 interface ExpandedLayerSnapshot {
     rect: {
@@ -41,8 +45,10 @@ interface ApplyExpandedSnapshotOptions {
     applyHidden?: boolean;
 }
 
-export function getSymbol(artboard: Artboard, layer: SymbolInstance, layerData: LayerData, data: ArtboardData, byInfluence: boolean): boolean {
+export async function getSymbol(artboard: Artboard, layer: SymbolInstance, layerData: LayerData, data: ArtboardData, byInfluence: boolean): Promise<boolean> {
     if (layerData.type != SMType.symbol) return false;
+    clearSymbolOverrideIndex(layer);
+    clearSymbolTreeCache(layer);
 
     pushSymbolDebug({
         symbol: layer.name,
@@ -52,7 +58,7 @@ export function getSymbol(artboard: Artboard, layer: SymbolInstance, layerData: 
 
     let tempGroup: Group = undefined;
     try {
-        tempGroup = createProjectedSymbolGroup(layer, artboard);
+        tempGroup = measureExportPhase('symbol projection', () => createProjectedSymbolGroup(layer, artboard, byInfluence));
         let exportLayers = flattenProjectedChildren(tempGroup);
 
         pushSymbolDebug({
@@ -66,9 +72,10 @@ export function getSymbol(artboard: Artboard, layer: SymbolInstance, layerData: 
                 .map((item: Layer) => `${item.type}:${item.name}`),
         });
 
-        exportLayers.forEach(projectedLayer => {
-            getLayerData(artboard, projectedLayer, data, byInfluence);
-        });
+        for (let projectedLayer of exportLayers) {
+            const pending = getLayerData(tempGroup.parent as Artboard, projectedLayer, data, byInfluence);
+            if (pending) await pending;
+        }
         return true;
     } catch (error) {
         pushSymbolDebug({
@@ -79,26 +86,37 @@ export function getSymbol(artboard: Artboard, layer: SymbolInstance, layerData: 
         });
         throw error;
     } finally {
+        clearSymbolOverrideIndex(layer);
+        clearSymbolTreeCache(layer);
+        releaseProjectionRenderLayers(tempGroup);
         safeRemove(tempGroup);
     }
 }
 
 export function debugDumpProjectedSymbol(instance: SymbolInstance, artboard: Artboard): any {
+    clearSymbolOverrideIndex(instance);
+    clearSymbolTreeCache(instance);
     let projected: Group = undefined;
     try {
         projected = createProjectedSymbolGroup(instance, artboard);
         return dumpLayerTreeForDebug(projected);
     } finally {
+        clearSymbolOverrideIndex(instance);
+        clearSymbolTreeCache(instance);
         safeRemove(projected);
+        closeProjectionHost();
     }
 }
 
-function createProjectedSymbolGroup(instance: SymbolInstance, artboard: Artboard): Group {
+function createProjectedSymbolGroup(instance: SymbolInstance, artboard: Artboard, byInfluence: boolean = false): Group {
+    let transform = instance.transform;
+    if (!byInfluence && !(transform && (transform.rotation || transform.flippedHorizontally || transform.flippedVertically))) {
+        let expandedProjection = createExpandedProjectedSymbolGroup(instance, artboard);
+        if (expandedProjection) return expandedProjection;
+    }
+
     let detachedProjection = createDetachedProjectedSymbolGroup(instance, artboard);
     if (detachedProjection) return detachedProjection;
-
-    let expandedProjection = createExpandedProjectedSymbolGroup(instance, artboard);
-    if (expandedProjection) return expandedProjection;
 
     let manualError: any = undefined;
     try {
@@ -119,10 +137,11 @@ function createProjectedSymbolGroup(instance: SymbolInstance, artboard: Artboard
 function createExpandedProjectedSymbolGroup(instance: SymbolInstance, artboard: Artboard): Group | undefined {
     let expandedLayers = getExpandedLayers(instance);
     if (!expandedLayers || !expandedLayers.length) return undefined;
+    let tempGroup: Group;
     try {
         let instanceRect = getInstanceArtboardRect(instance, artboard);
-        let tempGroup = new sketch.Group({
-            parent: artboard,
+        tempGroup = new sketch.Group({
+            parent: getProjectionHost(artboard),
             name: `#tmp-symbol-${instance.name}`,
             frame: new sketch.Rectangle(
                 instanceRect.x,
@@ -133,16 +152,27 @@ function createExpandedProjectedSymbolGroup(instance: SymbolInstance, artboard: 
         });
         tempLayers.add(tempGroup);
 
+        let nativeRoot = callNative<any>(instance.sketchObject, 'detachedInstance', undefined);
+        let container = new sketch.Group({
+            parent: tempGroup,
+            name: `tmp-instance-${instance.name}`,
+            frame: new sketch.Rectangle(0, 0, instanceRect.width, instanceRect.height),
+        });
+        setProjectedRect(container, instanceRect);
+        // Use an ordinary Group for rendering. MSDetachedSymbol is a virtual
+        // snapshot type; inserting it as a document root confuses native crop
+        // bounds. Preserve its style and layout metadata on the plain group.
+        if (hasNativeMethod(nativeRoot, 'newMutableCounterpart')) {
+            let sourceRoot = wrapLayer(nativeRoot.newMutableCounterpart());
+            container.style = sourceRoot.style;
+        } else if (instance.style) {
+            container.style = instance.style;
+        }
         let projectedChildren: Layer[] = [];
         expandedLayers.forEach((expandedLayer: Layer, layerIndex: number) => {
-            let projected = duplicateExpandedLayerTree(
-                expandedLayer,
-                tempGroup,
-                instanceRect.x,
-                instanceRect.y,
-                String(layerIndex)
-            );
-            if (projected) projectedChildren.push(projected);
+            let projected = duplicateExpandedLayerTree(expandedLayer, container, instanceRect.x, instanceRect.y, String(layerIndex));
+            if (!projected) throw new Error(`Unable to copy expanded child ${layerIndex}`);
+            projectedChildren.push(projected);
         });
         if (!projectedChildren.length) {
             safeRemove(tempGroup);
@@ -158,6 +188,7 @@ function createExpandedProjectedSymbolGroup(instance: SymbolInstance, artboard: 
 
         return tempGroup;
     } catch (error) {
+        safeRemove(tempGroup);
         pushSymbolDebug({
             symbol: instance.name,
             artboard: artboard.name,
@@ -169,6 +200,10 @@ function createExpandedProjectedSymbolGroup(instance: SymbolInstance, artboard: 
 }
 
 function getExpandedLayers(instance: SymbolInstance): Layer[] | undefined {
+    return getCachedSymbolRoots(instance, "expanded", () => readExpandedLayers(instance));
+}
+
+function readExpandedLayers(instance: SymbolInstance): Layer[] | undefined {
     try {
         let expandedLayers = (instance as any).expandedLayers as Layer[] | undefined;
         if (!expandedLayers || !expandedLayers.length) return undefined;
@@ -180,51 +215,58 @@ function getExpandedLayers(instance: SymbolInstance): Layer[] | undefined {
 
 function duplicateExpandedLayerTree(source: Layer, parent: Group, absoluteX: number, absoluteY: number, path: string): Layer | undefined {
     try {
-        let duplicated = source.duplicate() as Layer;
+        let nativeSource = (source as any).sketchObject;
+        let duplicated = hasNativeMethod(nativeSource, 'newMutableCounterpart')
+            ? wrapLayer(nativeSource.newMutableCounterpart().copy())
+            : source.duplicate() as Layer;
         duplicated.parent = parent;
-        duplicated.frame = source.frame.offset(0, 0);
+        let frame = source.frame;
         setProjectedSourceId(duplicated, source);
         setProjectedPath(duplicated, path);
         setProjectedRect(duplicated, {
-            x: absoluteX + source.frame.x,
-            y: absoluteY + source.frame.y,
-            width: source.frame.width,
-            height: source.frame.height,
+            x: absoluteX + frame.x,
+            y: absoluteY + frame.y,
+            width: frame.width,
+            height: frame.height,
         });
 
-        syncExpandedChildren(duplicated, source, absoluteX + source.frame.x, absoluteY + source.frame.y, path);
+        syncExpandedChildren(duplicated, source, absoluteX + frame.x, absoluteY + frame.y, path);
         return duplicated;
     } catch (error) {
         return undefined;
     }
 }
 
-function syncExpandedChildren(projected: Layer, source: Layer, absoluteX: number, absoluteY: number, path: string) {
+function syncExpandedChildren(projected: Layer, source: Layer, absoluteX: number, absoluteY: number, path: string): boolean {
+    let containsNote = /^(#meaxure-note-|#note|NOTE#)/.test(projected.name);
     let projectedChildren = getChildLayers(projected);
     let sourceChildren = getChildLayers(source);
+    if (projectedChildren.length != sourceChildren.length) throw new Error('Expanded copy changed child count');
     let count = Math.min(projectedChildren.length, sourceChildren.length);
     for (let i = 0; i < count; i++) {
         let projectedChild = projectedChildren[i];
         let sourceChild = sourceChildren[i];
         if (!projectedChild || !sourceChild) continue;
 
-        projectedChild.frame = sourceChild.frame.offset(0, 0);
+        let frame = sourceChild.frame;
         setProjectedSourceId(projectedChild, sourceChild);
-        setProjectedPath(projectedChild, `${path}/${i}`);
+        setProjectedPath(projectedChild, path ? `${path}/${i}` : String(i));
         setProjectedRect(projectedChild, {
-            x: absoluteX + sourceChild.frame.x,
-            y: absoluteY + sourceChild.frame.y,
-            width: sourceChild.frame.width,
-            height: sourceChild.frame.height,
+            x: absoluteX + frame.x,
+            y: absoluteY + frame.y,
+            width: frame.width,
+            height: frame.height,
         });
-        syncExpandedChildren(
+        containsNote = syncExpandedChildren(
             projectedChild,
             sourceChild,
-            absoluteX + sourceChild.frame.x,
-            absoluteY + sourceChild.frame.y,
-            `${path}/${i}`
-        );
+            absoluteX + frame.x,
+            absoluteY + frame.y,
+            path ? `${path}/${i}` : String(i)
+        ) || containsNote;
     }
+    (projected as any).__meaxureContainsNote = containsNote;
+    return containsNote;
 }
 
 function createDetachedProjectedSymbolGroup(instance: SymbolInstance, artboard: Artboard): Group | undefined {
@@ -243,7 +285,7 @@ function createDetachedProjectedSymbolGroup(instance: SymbolInstance, artboard: 
         });
         tempLayers.add(hostGroup);
 
-        let detached = detachProjectedSymbolIntoHost(instance, artboard, hostGroup, instanceRect);
+        let detached = measureExportPhase('symbol detach', () => detachProjectedSymbolIntoHost(instance, artboard, hostGroup, instanceRect));
         if (!detached) {
             throw new Error(`Detach returned empty group for ${instance.name}`);
         }
@@ -335,21 +377,21 @@ function detachProjectedSymbolFromSourceInstance(
 
 function syncDetachedExportablesWithExpandedLayers(instance: SymbolInstance, detached: Group, artboard: Artboard) {
     if (!detached) return;
-    normalizeDetachedSymbolGroupFrames(instance, detached, artboard);
+    measureExportPhase('symbol normalize', () => normalizeDetachedSymbolGroupFrames(instance, detached, artboard));
 
-    let expandedLayers = getExpandedLayers(instance);
+    let expandedLayers = measureExportPhase('symbol expanded roots', () => getExpandedLayers(instance));
     if (!expandedLayers || !expandedLayers.length) return;
 
-    let expandedSnapshot = getExpandedLayerSnapshot(instance, artboard);
+    let expandedSnapshot = measureExportPhase('symbol snapshot', () => getExpandedLayerSnapshot(instance, artboard));
     if (!expandedSnapshot) return;
 
     let detachedChildren = getChildLayers(detached);
     let count = Math.min(detachedChildren.length, expandedLayers.length);
-    for (let i = 0; i < count; i++) {
+    measureExportPhase('symbol annotate', () => { for (let i = 0; i < count; i++) {
         annotateDetachedLayerTree(instance, detachedChildren[i], expandedLayers[i], String(i));
-    }
+    } });
 
-    applyExpandedLayerRectsForExportableLayers(detachedChildren, expandedSnapshot);
+    measureExportPhase('symbol apply snapshot', () => applyExpandedLayerRectsForExportableLayers(detachedChildren, expandedSnapshot));
 }
 
 function normalizeDetachedSymbolGroupFrames(instance: SymbolInstance, detached: Group, artboard: Artboard) {
@@ -663,7 +705,13 @@ function createProjectedSymbolGroupFromMaster(instance: SymbolInstance, artboard
 function flattenProjectedChildren(tempGroup: Group): (Layer | LayerPlaceholder)[] {
     let result: (Layer | LayerPlaceholder)[] = [];
     getChildLayers(tempGroup).forEach(child => {
-        let [layers] = getChildrenForExport(child);
+        let [layers] = getChildrenForExport(child, current => {
+            // Descendants of these containers cannot produce annotations.
+            // Keep note subtrees, since notes bypass the normal filters.
+            if ((current as any).__meaxureContainsNote !== false) return true;
+            return !current.hidden && current.type != sketch.Types.Shape
+                && !(current.type == sketch.Types.Group && current.exportFormats.length > 0);
+        });
         result.push(...layers);
     });
     return result;
@@ -801,37 +849,11 @@ function projectNestedSymbol(layer: Layer, parent: Group, rootInstance: SymbolIn
 }
 
 function getExpandedLayerAtPath(instance: SymbolInstance, path: string): Layer | undefined {
-    let expandedLayers = getExpandedLayers(instance);
-    if (!expandedLayers || !expandedLayers.length) return undefined;
-    let indexes = String(path || "")
-        .split("/")
-        .filter(Boolean)
-        .map(part => Number(part))
-        .filter(part => isFinite(part) && part >= 0);
-    if (!indexes.length) return undefined;
-
-    let current = expandedLayers[indexes[0]];
-    for (let i = 1; current && i < indexes.length; i++) {
-        current = getExpandedChildLayers(current)[indexes[i]];
-    }
-    return current;
+    return getCachedSymbolLayer(instance, "expanded", () => readExpandedLayers(instance), getExpandedChildLayers, path);
 }
 
 function getMasterLayerAtPath(instance: SymbolInstance, path: string): Layer | undefined {
-    let master = instance ? instance.master : undefined;
-    if (!master) return undefined;
-    let indexes = String(path || "")
-        .split("/")
-        .filter(Boolean)
-        .map(part => Number(part))
-        .filter(part => isFinite(part) && part >= 0);
-    if (!indexes.length) return undefined;
-
-    let current = getChildLayers(master)[indexes[0]];
-    for (let i = 1; current && i < indexes.length; i++) {
-        current = getChildLayers(current)[indexes[i]];
-    }
-    return current;
+    return getCachedSymbolLayer(instance, "master", () => getChildLayers(instance.master), getChildLayers, path);
 }
 
 function getPreferredProjectedSourceId(instance: SymbolInstance, projectedLayer: Layer, expandedLayer: Layer, path?: string): string | undefined {
@@ -1374,7 +1396,7 @@ function collectExpandedOverrideFrameSnapshot(
 function getOverridesForExpandedLayer(instance: SymbolInstance, layer: Layer): Override[] {
     try {
         if (typeof (instance as any).overridesForExpandedLayer !== "function") return [];
-        let overrides = (instance as any).overridesForExpandedLayer(layer) as Override[] | undefined;
+        let overrides = getIndexedExpandedOverrides(instance, layer);
         return overrides || [];
     } catch (error) {
         return [];
@@ -1453,7 +1475,7 @@ function collectExpandedLayerSnapshot(instance: SymbolInstance, layer: Layer, or
 function getExpandedLayerSourceId(instance: SymbolInstance, layer: Layer): string {
     try {
         if (typeof (instance as any).overridesForExpandedLayer === "function") {
-            let overrides = (instance as any).overridesForExpandedLayer(layer) as Override[] | undefined;
+            let overrides = getIndexedExpandedOverrides(instance, layer);
             let override = overrides && overrides.find(item => item && item.affectedLayer && item.affectedLayer.id);
             if (override && override.affectedLayer && override.affectedLayer.id) {
                 return override.affectedLayer.id;
@@ -1872,7 +1894,7 @@ function getInstanceArtboardRect(instance: SymbolInstance, artboard: Artboard): 
 
 function safeRemove(layer?: Layer) {
     try {
-        if (layer) layer.remove();
+        if (layer) tempLayers.remove(layer);
     } catch (error) {
         // ignore cleanup errors
     }

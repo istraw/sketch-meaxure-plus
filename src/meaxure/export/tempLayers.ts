@@ -1,49 +1,29 @@
 class TempLayersManager {
-    private _layers: Layer[] = [];
-    private _idMap: { [key: string]: boolean } = {};
-    constructor() { }
+    private layers = new Map<string, Layer>();
+    private removed = new WeakSet<Layer>();
     removeAll() {
-        for (let tmp of this._layers) {
-            try {
-                if (tmp) tmp.remove();
-            } catch (error) {
-                // ignore temp cleanup errors
-            }
+        // Only remove layers owned by this export. A document-wide name sweep
+        // is expensive and can delete user layers named with the same prefix.
+        for (let layer of Array.from(this.layers.values()).reverse()) {
+            try { this.remove(layer); } catch (error) { /* best-effort cleanup */ }
         }
-        this._layers = [];
-        this._idMap = {};
+        this.layers.clear();
+        this.removed = new WeakSet<Layer>();
     }
-    add(layer: Layer) {
+    add(layer: Layer, hidden: boolean = true) {
         layer.name = '#tmp-' + layer.name;
-        layer.hidden = true;
-        this._layers.push(layer);
-        this._idMap[layer.id] = true;
+        layer.hidden = hidden;
+        this.layers.set(layer.id, layer);
     }
-    exists(layerID: string): boolean;
-    exists(layer: Layer): boolean;
+    remove(layer: Layer) {
+        if (!layer || this.removed.has(layer)) return;
+        let id = layer.id;
+        layer.remove();
+        this.layers.delete(id);
+        this.removed.add(layer);
+    }
     exists(para: string | Layer): boolean {
-        let id = (typeof para == 'string') ? para : para.id;
-        return this._idMap[id];
-    }
-
-    purgeByNamePrefix(document: Document, prefix: string = '#tmp-') {
-        if (!document || !document.pages) return;
-        document.pages.forEach(page => {
-            sweep(page);
-        });
-
-        function sweep(layer: any) {
-            let children = layer.layers ? Array.from(layer.layers) : [];
-            children.forEach((child: any) => sweep(child));
-            if (layer !== document && layer.name && String(layer.name).startsWith(prefix)) {
-                try {
-                    layer.remove();
-                } catch (error) {
-                    // ignore best-effort cleanup failures
-                }
-            }
-        }
+        return !!para && this.layers.has(typeof para === 'string' ? para : para.id);
     }
 }
-
 export let tempLayers = new TempLayersManager();

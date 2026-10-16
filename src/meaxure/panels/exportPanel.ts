@@ -34,6 +34,8 @@ interface ExportData {
     current: string[];
     currentPageID: string;
     pages: PageInfo[];
+    resolution: number;
+    units: string;
     exportOption: boolean;
     exportInfluenceRect: boolean;
     order: OptionArtboardOrder;
@@ -42,6 +44,7 @@ interface ExportData {
 
 interface SubmitData {
     selection: { [key: string]: boolean };
+    resolution?: number;
     exportOption: boolean;
     exportInfluenceRect: boolean;
     order: OptionArtboardOrder;
@@ -60,7 +63,7 @@ export function exportPanel(): Promise<ExportConfig> {
         identifier: 'com.istraw.sketch-meaxure-plus.export',
         url: getResourcePath() + "/panel/export.html",
         width: 320,
-        height: 597,
+        height: 637,
     });
     if (!panel) return undefined;
 
@@ -77,6 +80,8 @@ export function exportPanel(): Promise<ExportConfig> {
     return new Promise<ExportConfig>((resolve, reject) => {
         panel.onClose(() => resolve(undefined));
         panel.onDidReceiveMessage<SubmitData>('submit', rdata => {
+            const resolution = Number(rdata.resolution === undefined ? context.configs.resolution : rdata.resolution);
+            if (!isFinite(resolution) || resolution <= 0) throw new Error('Invalid export resolution');
             let exportArtboards: { artboard: Artboard, children: (Layer | LayerPlaceholder)[] }[] = [];
             let layersCount = 0;
             for (let page of data.pages) {
@@ -91,6 +96,10 @@ export function exportPanel(): Promise<ExportConfig> {
                     }
                 }
             }
+            // Save only after a real submission; sorting and cancellation must
+            // leave the document's settings untouched. The exporter reads this
+            // same design-resolution setting for dimensions and asset sources.
+            if (exportArtboards.length) context.configs.resolution = resolution;
             resolve(<ExportConfig>{
                 selection: exportArtboards,
                 layersCount: layersCount,
@@ -110,6 +119,8 @@ function prepareExportData(): [ExportData, { [key: string]: Artboard }] {
         selection: [],
         current: [],
         pages: [],
+        resolution: context.configs.resolution,
+        units: context.configs.units,
         exportOption: true,
         exportInfluenceRect: context.configs.byInfluence,
         order: 'artboard-rows',

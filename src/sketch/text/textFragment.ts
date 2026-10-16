@@ -15,6 +15,15 @@ export interface TextFragment {
 export function getFragmentsCount(layer: Layer): number {
     let attributedString = callNative<any>(layer.sketchObject, "attributedString", undefined);
     if (!attributedString) return 0;
+    // Counting ranges does not require serializing the complete attributed
+    // string (fonts, colors and paragraph dictionaries) for every plain label.
+    try {
+        let attributes = callNative<any>(attributedString, 'attributedStringAttributes', undefined);
+        if (attributes) {
+            let count = hasNativeMethod(attributes, 'count') ? callNative<number>(attributes, 'count', undefined) : attributes.length;
+            if (typeof count === 'number' && isFinite(count) && count >= 0) return count;
+        }
+    } catch (error) { /* older Sketch versions use the dictionary fallback */ }
     let fragments: any[] = attributedString.treeAsDictionary().value.attributes;
     return fragments.length;
 }

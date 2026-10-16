@@ -1,0 +1,21 @@
+const assert=require('assert'),fs=require('fs'),vm=require('vm'),ts=require('typescript');
+const code=ts.transpileModule(fs.readFileSync('src/meaxure/export/layers.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2015}}).outputText;
+let childReads=0;
+const box={exports:{},require:n=>{
+ if(n==='../../sketch')return {sketch:{Types:{Group:'Group',Shape:'Shape',SymbolInstance:'SymbolInstance'}}};
+ if(n==='../../sketch/compat')return {getChildLayers:l=>{childReads++;return l.layers||[];}};
+ if(n==='./tint')return {getTintInfo:l=>l.tint};
+ return {};
+}};
+vm.runInNewContext(code,box);
+const shape={id:'shape',type:'Shape',get layers(){throw Error('excluded shape paths must not be wrapped');}};
+const hidden={id:'hidden',type:'Group',hidden:true,exportFormats:[],layers:[{id:'hidden-text',type:'Text'}]};
+const slice={id:'slice',type:'Group',exportFormats:[{}],layers:[{id:'slice-text',type:'Text'}],tint:{}};
+const note={id:'note',type:'Group',name:'NOTE#legacy',exportFormats:[],layers:[{id:'note-text',type:'Text'}]};
+const locked={id:'locked',type:'Group',locked:true,exportFormats:[],layers:[note]};
+const root={id:'root',type:'Group',exportFormats:[],layers:[shape,hidden,slice,locked,{id:'visible',type:'Text'}]};
+const [items,count]=box.exports.getChildrenForExport(root);
+assert.deepStrictEqual(Array.from(items,l=>l.id||'tint'),['shape','hidden','tint','slice','note-text','note','locked','visible','root']);
+assert.strictEqual(count,8);
+assert(!items.some(l=>l.id==='hidden-text'||l.id==='slice-text'));
+console.log('PASS: source shape/hidden/slice descendants pruned, locked legacy notes and tint boundary preserved');
