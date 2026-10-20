@@ -2,10 +2,11 @@ import { SMDownloadSource } from '../../src/meaxure/interfaces';
 import { AssetFormat, dimensions } from './model';
 export async function encodeAsset(source:SMDownloadSource,scale:number,format:AssetFormat):Promise<Blob> {
     const size=dimensions(source,format==='svg'?1:scale);
-    if(source.maxScale && scale>source.maxScale) throw new Error('素材源仅支持到 '+source.maxScale+'x');
+    if(format!=='svg' && source.maxScale && scale>source.maxScale) throw new Error('素材源仅支持到 '+source.maxScale+'x');
     if(format==='svg') {
-        if(source.format!=='svg') throw new Error('此素材没有 SVG 源，请选择 PNG、WebP 或 JPG');
-        const raw=atob(source.dataURL.split(',')[1]);
+        const svgURL=source.svgDataURL || (source.format==='svg' ? source.dataURL : undefined);
+        if(!svgURL) throw new Error('此素材没有 SVG 源，请选择 PNG、WebP 或 JPG');
+        const raw=atob(svgURL.split(',')[1]);
         const svg=new TextDecoder().decode(Uint8Array.from(raw,c=>c.charCodeAt(0)));
         const document=new DOMParser().parseFromString(svg,'image/svg+xml');
         if(document.querySelector('parsererror')) throw new Error('SVG 源无法解析');

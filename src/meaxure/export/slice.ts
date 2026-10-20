@@ -155,35 +155,38 @@ function getExportable(layer: Layer, formats: ExportFormat[], outputName: string
 
 function collectDownloadSource(layer: Layer, name: string): string {
     const resolution = Number(context.configs.resolution) || 1;
-    let format: 'svg' | 'png' = 'svg';
     let buffer: Buffer;
     let width = layer.frame.width, height = layer.frame.height;
-    let maxScale: number;
+    let maxScale = 4;
+    let svgDataURL: string;
     let containsBitmap = false;
-    try {
-        buffer = exportImageToBuffer(layer, {format:'svg',scale:1,prefix:'',suffix:''});
-        let svg = buffer.toString('utf8');
-        if (!/<svg[\s>]/i.test(svg)) throw new Error('SVG source unavailable');
-        const box = /viewBox=["']\s*[-\d.e+]+[ ,]+[-\d.e+]+[ ,]+([\d.e+]+)[ ,]+([\d.e+]+)\s*["']/i.exec(svg);
-        if (box) { width = Number(box[1]); height = Number(box[2]); }
-        containsBitmap = /<image[\s>]/i.test(svg);
-    } catch (error) {
-        format = 'png';
-        containsBitmap = true;
-        maxScale = 4;
-        try { buffer = exportImageToBuffer(layer, {format:'png',scale:4/resolution,prefix:'',suffix:''}); }
-        catch (error) {
-            maxScale = 1;
-            buffer = exportImageToBuffer(layer, {format:'png',scale:1/resolution,prefix:'',suffix:''});
-        }
+    // Bitmap downloads must start with Sketch's raster renderer. Repainting
+    // its SVG in a browser can change masks, gradients and blend modes.
+    try { buffer = exportImageToBuffer(layer, {format:'png',scale:4/resolution,prefix:'',suffix:''}); }
+    catch (error) {
+        maxScale = 1;
+        buffer = exportImageToBuffer(layer, {format:'png',scale:1/resolution,prefix:'',suffix:''});
     }
-    const dataURL = 'data:image/' + (format == 'svg' ? 'svg+xml' : 'png') + ';base64,' + buffer.toString('base64');
-    const key = JSON.stringify([name,width/resolution,height/resolution,dataURL]);
+    // Read the actual crop size, including native rounding/trimming.
+    if (buffer.length < 24 || buffer.toString('hex', 0, 8) !== '89504e470d0a1a0a') throw new Error('PNG source unavailable');
+    width = buffer.readUInt32BE(16) / maxScale;
+    height = buffer.readUInt32BE(20) / maxScale;
+    try {
+        const svgBuffer = exportImageToBuffer(layer, {format:'svg',scale:1,prefix:'',suffix:''});
+        let svg = svgBuffer.toString('utf8');
+        if (!/<svg[\s>]/i.test(svg)) throw new Error('SVG source unavailable');
+        containsBitmap = /<image[\s>]/i.test(svg);
+        svgDataURL = 'data:image/svg+xml;base64,' + svgBuffer.toString('base64');
+    } catch (error) {
+        containsBitmap = true;
+    }
+    const dataURL = 'data:image/png;base64,' + buffer.toString('base64');
+    const key = JSON.stringify([name,width,height,dataURL,svgDataURL]);
     let id = sourceContents.get(key);
     if (!id) {
         id = 'source-' + Object.keys(downloadSources).length;
         sourceContents.set(key,id);
-        downloadSources[id] = {name,width:width/resolution,height:height/resolution,dataURL,format,containsBitmap,maxScale};
+        downloadSources[id] = {name,width,height,dataURL,format:'png',svgDataURL,containsBitmap,maxScale};
     }
     return id;
 }

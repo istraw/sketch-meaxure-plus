@@ -1,6 +1,6 @@
-# Spec Export 2026.3.12
+# Spec Export 2026.3.1
 
-This local patch targets Sketch 2026.3 (233959). Native worker-isolation experiments were withdrawn and are not included in this build. It has not been published to GitHub Releases.
+This release targets Sketch 2026.3 (233959). Native worker-isolation experiments were withdrawn and are not included in this build. The numbered follow-ups below record earlier local development builds; the public patch release is v2026.3.1.
 
 ## Changes
 
@@ -177,3 +177,11 @@ The inspector converts radii with the selected design resolution and device unit
 For the existing viewer, a test-only metadata harness reuses production layer traversal and geometry while omitting asset generation, unrelated style extraction, and rich-text reconstruction. Only Shape/Group records are used; every record must match the existing board's ordered name, type and rectangle before its radius can be applied. Existing assets, annotation IDs, positions, text and download-source settings are preserved. The harness transform checks its production-source anchors and fails if they change.
 
 The metadata pass completed all 72 boards and matched all 12,067 Shape/Group records, adding radius values to 2,415 layers in `Downloads/大宗交易-透明切图修复`. Comparing the embedded data before and after with radius fields removed confirms all other annotation data is identical. Browser verification of the reported Vector shows X=12pt, Y=256.5pt, size=218×44pt and radius=4pt. All unit tests and the plugin build pass; version 2026.3.15 is installed.
+
+## Native raster downloads (public release v2026.3.1)
+
+The spec viewer now uses a PNG rendered by Sketch for previews and PNG/WebP/JPG downloads. Previously, it preferred an SVG source and rasterized it in the browser, which could change gradients, masks and blending compared with direct Sketch slice exports. SVG remains available as a separate download source. Existing exported specs must be regenerated to use the new source.
+
+The native PNG source supports up to 4x downloads, falling back to 1x if the larger render fails. Logical dimensions come from the actual PNG crop size. Lower densities are resized in the browser, so this preserves Sketch's compositing but does not promise byte-identical output to every direct export size. Older specs remain readable.
+
+Validation: all automated tests and the production build pass. Regression checks cover native raster source selection, crop dimensions, the separate SVG download, scale limits and the 1x fallback. The user re-exported the reported slice and confirmed that its appearance is correct.

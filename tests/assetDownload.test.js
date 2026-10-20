@@ -40,6 +40,17 @@ assert.deepStrictEqual(model.preferences.selected.android,saved);
 assert(html.includes('type="checkbox" value="1.5" checked'));
 assert.deepStrictEqual(Array.from(model.downloadScales('png',[1.5,3])),[1.5,3]);
 console.log('PASS: SVG hides density choices and downloads one 1x file; raster selections survive format changes');
+const nativeSource={...source,format:'png',dataURL:'data:image/png;base64,bmF0aXZl',svgDataURL:source.dataURL,maxScale:4};
+html=render.renderAssetControls('native',nativeSource);
+assert(html.includes('src="'+nativeSource.dataURL+'"'),'preview must use native PNG');
+assert(html.includes('value="svg" >SVG'),'optional SVG remains downloadable');
+model.preferences.format='svg';
+html=render.renderAssetControls('native',nativeSource);
+assert(html.includes('class="asset-scales" hidden disabled'));
+html=render.renderAssetControls('png-only',{...nativeSource,svgDataURL:undefined});
+assert(html.includes('value="svg" disabled'));
+assert(html.includes('value="png" selected'));
+model.preferences.format='png';
 const zip=load('ui/download/zip.ts');
 (async()=>{
  const blob=zip.zipFiles([{name:'drawable-hdpi/加号.png',bytes:new Uint8Array([1,2,3])}]);

@@ -141,6 +141,7 @@ export interface SMDownloadSource {
     width: number;
     height: number;
     dataURL: string;
+    svgDataURL?: string;
     format: 'svg' | 'png';
     containsBitmap: boolean;
     maxScale?: number;

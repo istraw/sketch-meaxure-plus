@@ -40,11 +40,21 @@ box.exports.getSlice({...layer,id:'dimmed-slice',parent:invisible},{rect:data.re
 assert.strictEqual(images.length,beforeTransparent+2,'partial opacity must still export');
 console.log('PASS: fully transparent ancestors cannot overwrite same-named assets; partial opacity is preserved');
 
-// The source ignores saved export formats and normalizes physical crop pixels
-// to logical 1x dimensions using document resolution.
+// Raster downloads and previews use native PNG pixels even when SVG succeeds.
+// Actual PNG crop dimensions, rather than the SVG viewBox, define logical 1x.
 imports['../common/context'].context.configs.resolution=2;
+const sourceFormats=[];
+let failHighResolution=false,failSVG=false;
 imports['./files'].exportImageToBuffer=(layer,format)=>{
-    assert.strictEqual(format.format,'svg');
+    sourceFormats.push(format);
+    if(format.format==='png') {
+        if(failHighResolution && format.scale===2) throw Error('too large');
+        const png=Buffer.alloc(24);
+        Buffer.from('89504e470d0a1a0a','hex').copy(png);
+        png.writeUInt32BE(40*format.scale,16);png.writeUInt32BE(40*format.scale,20);
+        return png;
+    }
+    if(failSVG) throw Error('SVG unavailable');
     return Buffer.from('<svg viewBox="0 0 40 40" xmlns="http://www.w3.org/2000/svg"><path d="M0 0h40v40z"/></svg>');
 };
 box.exports.clearSliceCache();
@@ -54,10 +64,22 @@ const sourceID=customData.exportable[0].sourceID;
 const downloadSource=box.exports.getCollectedDownloadSources()[sourceID];
 assert.strictEqual(downloadSource.width,20);
 assert.strictEqual(downloadSource.height,20);
-assert.strictEqual(downloadSource.format,'svg');
+assert.strictEqual(downloadSource.format,'png');
+assert.strictEqual(downloadSource.maxScale,4);
+assert.strictEqual(sourceFormats[0].format,'png');
+assert.strictEqual(sourceFormats[0].scale,2);
 assert.strictEqual(downloadSource.containsBitmap,false);
-assert(downloadSource.dataURL.startsWith('data:image/svg+xml;base64,'));
+assert(downloadSource.dataURL.startsWith('data:image/png;base64,'));
+assert(downloadSource.svgDataURL.startsWith('data:image/svg+xml;base64,'));
 assert.strictEqual(customData.exportable[1].sourceID,sourceID);
 box.exports.clearSliceCache();
 assert.strictEqual(Object.keys(box.exports.getCollectedDownloadSources()).length,0);
-console.log('PASS: saved PNG presets gain an offline SVG source with resolution-normalized dimensions and scoped cleanup');
+failHighResolution=true;failSVG=true;
+const fallbackData={rect:data.rect};
+box.exports.getSlice(layer,fallbackData);
+const fallback=box.exports.getCollectedDownloadSources()[fallbackData.exportable[0].sourceID];
+assert.strictEqual(fallback.width,20);
+assert.strictEqual(fallback.maxScale,1);
+assert.strictEqual(fallback.format,'png');
+assert.strictEqual(fallback.svgDataURL,undefined);
+console.log('PASS: native PNG is primary even with SVG available; crop dimensions, optional SVG, 1x fallback and cleanup are preserved');

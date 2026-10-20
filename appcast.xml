@@ -2,9 +2,18 @@
 <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
     <title>Sketch MeaXure</title>
-    <link>https://raw.githubusercontent.com/qjebbs/sketch-meaxure/master/appcast.xml</link>
+    <link>https://raw.githubusercontent.com/istraw/sketch-meaxure-plus/master/appcast.xml</link>
     <description>Make it a fun to create spec for developers and teammates</description>
     <language>en</language>
+    <item>
+      <title>2026.3.1</title>
+      <description>Use Sketch-rendered PNG sources for spec previews and bitmap downloads. Re-export existing specs to apply this fix.</description>
+      <enclosure url="https://github.com/istraw/sketch-meaxure-plus/releases/download/v2026.3.1/sketch-meaxure-plus.sketchplugin.zip" sparkle:version="2026.3.1" type="application/octet-stream"/>
+    </item>
+    <item>
+      <title>2026.3</title>
+      <enclosure url="https://github.com/istraw/sketch-meaxure-plus/releases/download/v2026.3/sketch-meaxure-plus.sketchplugin.zip" sparkle:version="2026.3" type="application/octet-stream"/>
+    </item>
     <item>
       <enclosure url="https://github.com/qjebbs/sketch-meaxure/releases/download/v3.3.4/sketch-meaxure.sketchplugin.zip" sparkle:version="3.3.4"/>
     </item>
