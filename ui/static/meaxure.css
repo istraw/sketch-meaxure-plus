@@ -1336,11 +1336,12 @@ main {
 
 /* Offline asset download controls */
 .asset-export { font-size: 13px; }
-.asset-preview { display:flex;align-items:center;justify-content:center;min-height:128px;padding:16px;margin-bottom:16px;border:1px solid #dce1e8;border-radius:6px;background:repeating-conic-gradient(#edf0f5 0% 25%,#fff 0% 50%) 0 / 16px 16px; }
+.asset-preview { display:flex;align-items:center;justify-content:center;min-height:128px;padding:16px;margin-bottom:16px;border:1px solid rgba(255,255,255,.1);border-radius:6px;background:repeating-conic-gradient(#292a2c 0% 25%,#242527 0% 50%) 0 / 16px 16px; }
 .asset-preview img { display:block;width:100%;height:128px;object-fit:contain; }
 .asset-setting { display:flex;align-items:center;justify-content:space-between;gap:12px;margin:12px 0;font-weight:600; }
-.asset-setting select { width:126px;padding:8px;border:1px solid #cbd2dc;border-radius:5px;background:#30343d;color:#fff;font:inherit; }
-.asset-scales { border:0;border-bottom:1px solid #dce1e8;margin:0 0 16px;padding:0 0 12px;min-width:0; }
+.asset-setting select { width:126px;padding:8px;border:1px solid rgba(255,255,255,.14);border-radius:5px;background:#2b2c2f;color:#e6e7e9;font:inherit;transition:border-color .15s,background-color .15s; }
+.asset-setting select:hover { border-color:rgba(255,255,255,.24);background:#303134; }
+.asset-scales { border:0;border-bottom:1px solid rgba(255,255,255,.08);margin:0 0 16px;padding:0 0 12px;min-width:0; }
 .asset-scales legend { position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%); }
 .asset-scale { display:flex;justify-content:space-between;align-items:center;gap:8px;padding:9px 0;cursor:pointer; }
 .asset-scale span { display:flex;align-items:center;gap:8px; }

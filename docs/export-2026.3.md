@@ -185,3 +185,7 @@ The spec viewer now uses a PNG rendered by Sketch for previews and PNG/WebP/JPG 
 The native PNG source supports up to 4x downloads, falling back to 1x if the larger render fails. Logical dimensions come from the actual PNG crop size. Lower densities are resized in the browser, so this preserves Sketch's compositing but does not promise byte-identical output to every direct export size. Older specs remain readable.
 
 Validation: all automated tests and the production build pass. Regression checks cover native raster source selection, crop dimensions, the separate SVG download, scale limits and the 1x fallback. The user re-exported the reported slice and confirmed that its appearance is correct.
+
+## UI refinements included in v2026.3.1
+
+Asset controls use subtle dark borders, dividers and preview checkerboards to match the dark viewer theme. Export progress displays only the processing label and counts, without the current layer name. These refinements replace the v2026.3.1 package without introducing a new version.

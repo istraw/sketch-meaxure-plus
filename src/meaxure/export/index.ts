@@ -84,7 +84,7 @@ export async function exportSpecification() {
         session = new ExportSession(() => cancelled, current => {
             if (processingPanel) safeCall(() => processingPanel.postMessage('process', {
                 percentage: Math.round(layerIndex / results.layersCount * 100),
-                text: localize("Processing layer %@ of %@", layerIndex, results.layersCount) + " · " + current.currentLayer.slice(0, 24)
+                text: localize("Processing layer %@ of %@", layerIndex, results.layersCount)
             }));
             if (Date.now() - lastDiagnostics >= 1000) {
                 safeCall(() => writeFile({ content: JSON.stringify(current.summary('running')), path: savePath, fileName: 'export-diagnostics.json' }));
