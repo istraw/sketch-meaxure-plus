@@ -2,8 +2,9 @@ const assert=require('assert'),fs=require('fs'),vm=require('vm'),ts=require('typ
 const loaded=[],drawn=[];
 const svgURL='data:image/svg+xml;base64,'+Buffer.from('<svg/>').toString('base64');
 const pngURL='data:image/png;base64,'+Buffer.from('native pixels').toString('base64');
+const {common,setLanguage}=require('./viewerLanguage');
 let parsedSVG;
-const box={exports:{},require:()=>({dimensions:(source,scale)=>({width:source.width*scale,height:source.height*scale})}),
+const box={exports:{},require:name=>name==='../common'?common:({dimensions:(source,scale)=>({width:source.width*scale,height:source.height*scale})}),
     Blob,Uint8Array,TextDecoder,setTimeout,clearTimeout,atob,
     Image:class {set src(url){loaded.push(url);this.onload();}},
     DOMParser:class {parseFromString(svg){parsedSVG=svg;return {querySelector:()=>null,documentElement:{setAttribute(){}}};}},
@@ -23,5 +24,10 @@ vm.runInNewContext(ts.transpileModule(fs.readFileSync('ui/download/encode.ts','u
     await assert.rejects(box.exports.encodeAsset(source,5,'png'),/4x/);
     await assert.rejects(box.exports.encodeAsset({...source,svgDataURL:undefined},1,'svg'),/SVG/);
     await box.exports.encodeAsset({...source,format:'svg',dataURL:svgURL,svgDataURL:undefined},1,'svg');
+    for(const language of ['en','zh-cn']) {
+        setLanguage(language);
+        await assert.rejects(box.exports.encodeAsset(source,5,'png'),language==='en'?/Source supports up to 4x/:/素材源仅支持到 4x/);
+        await assert.rejects(box.exports.encodeAsset({...source,svgDataURL:undefined},1,'svg'),language==='en'?/No SVG source available/:/没有 SVG 源/);
+    }
     console.log('PASS: bitmap encoding uses native PNG, separate SVG remains available, old sources and scale limits are supported');
 })().catch(error=>{console.error(error);process.exitCode=1;});

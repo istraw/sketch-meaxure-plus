@@ -189,3 +189,7 @@ Validation: all automated tests and the production build pass. Regression checks
 ## UI refinements included in v2026.3.1
 
 Asset controls use subtle dark borders, dividers and preview checkerboards to match the dark viewer theme. Export progress displays only the processing label and counts, without the current layer name. These refinements replace the v2026.3.1 package without introducing a new version.
+
+## Bilingual viewer included in v2026.3.1
+
+Slice bounds, asset download controls, preview labels, format help, download status and errors now follow the selected language. English, Simplified Chinese and Traditional Chinese dictionaries include these strings. Existing copy and navigation messages also have Chinese translations. Regenerate existing specs after selecting the desired plugin language. This update replaces the existing v2026.3.1 package.

@@ -29,7 +29,7 @@ export function render(data: ProjectData) {
         '</div>',
         '<h1></h1>',
         '<div class="show-slice-bounds">',
-        '<label for="show-slice-bounds">切片范围</label>',
+        `<label for="show-slice-bounds">${localize('Slice bounds')}</label>`,
         '<div class="slidebox">',
         '<input id="show-slice-bounds" type="checkbox" name="show-slice-bounds">',
         '<label for="show-slice-bounds"></label>',

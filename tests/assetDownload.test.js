@@ -4,7 +4,8 @@ function load(file,imports={}) {
  const box={exports:{},require:n=>{assert(n in imports,n);return imports[n]},TextEncoder,DataView,Uint8Array,Blob};
  vm.runInNewContext(code,box);return box.exports;
 }
-const model=load('ui/download/model.ts');
+const {common}=require('./viewerLanguage');
+const model=load('ui/download/model.ts',{'../common':common});
 const src={width:20,height:20};
 assert.deepStrictEqual({...model.dimensions(src,1.5)},{width:30,height:30});
 assert.deepStrictEqual({...model.dimensions(src,3)},{width:60,height:60});
@@ -14,7 +15,8 @@ assert.strictEqual(model.filename('Plus Icon','android',1.5,'webp'),'drawable-hd
 assert.strictEqual(model.filename('icon','web',1,'jpg'),'icon.jpg');
 assert.strictEqual(model.scales.android.length,5);
 const source={...src,name:'plus',dataURL:'data:image/svg+xml;base64,c3Zn',format:'svg',containsBitmap:false};
-const render=load('ui/render/inspector/exportable.ts',{'../../common':{project:{downloadSources:{test:source}}},'../../download/model':model,'./shared':{propertyType:(t,s)=>s}});
+common.project.downloadSources={test:source};
+const render=load('ui/render/inspector/exportable.ts',{'../../common':common,'../../download/model':model,'./shared':{propertyType:(t,s)=>s}});
 let html=render.renderExportable({exportable:[{sourceID:'test'}]});
 assert(html.includes('iOS')&&html.includes('Android')&&html.includes('Web'));
 assert(html.includes('value="webp"')&&html.includes('value="svg"')&&html.includes('value="jpg"'));

@@ -30,8 +30,10 @@ export var I18N = {};
 export var lang = normalizeLangCode(navigator.language);
 export var timestamp = new Date().getTime();
 
-export function localize(str) {
-    return (I18N[lang] && I18N[lang][str]) ? I18N[lang][str] : str;
+export function localize(str: string, ...values: (string | number)[]): string {
+    const text = (I18N[lang] && I18N[lang][str]) ? I18N[lang][str] : str;
+    let index = 0;
+    return text.replace(/%@/g, () => index < values.length ? String(values[index++]) : '%@');
 }
 
 export type ProjectData = ExportData & { colorNames: { [key: string]: string } }

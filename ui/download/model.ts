@@ -1,3 +1,4 @@
+import { localize } from "../common";
 import { SMDownloadSource } from '../../src/meaxure/interfaces';
 export type Platform = 'ios' | 'android' | 'web';
 export type AssetFormat = 'png' | 'webp' | 'svg' | 'jpg';
@@ -16,7 +17,7 @@ export function downloadScales(format:AssetFormat,selected:number[]):number[] {
 export function dimensions(source: SMDownloadSource, scale: number) {
     const width=Math.max(1,Math.round(source.width*scale));
     const height=Math.max(1,Math.round(source.height*scale));
-    if (!isFinite(width) || !isFinite(height) || width*height>64000000 || width>16384 || height>16384) throw new Error('尺寸过大，请选择较小倍数');
+    if (!isFinite(width) || !isFinite(height) || width*height>64000000 || width>16384 || height>16384) throw new Error(localize("Image too large. Choose a smaller scale."));
     return {width,height};
 }
 export function filename(name:string, platform:Platform, scale:number, format:AssetFormat):string {
@@ -26,7 +27,7 @@ export function filename(name:string, platform:Platform, scale:number, format:As
         name=name.toLowerCase().replace(/[^a-z0-9_]/g,'_');
         if(!/^[a-z]/.test(name)) name='asset_'+name;
         const density=scales.android.find(item=>item.scale===scale);
-        if(!density) throw new Error('不支持的 Android 密度');
+        if(!density) throw new Error(localize("Unsupported Android density"));
         return 'drawable-'+density.label+'/'+name+'.'+format;
     }
     return name+(scale===1?'':'@'+scale+'x')+'.'+format;

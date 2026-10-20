@@ -100,14 +100,14 @@ function assetDownloadEvents() {
         const platform=preferences.platform,format=(panel.querySelector('.asset-format') as HTMLSelectElement).value as AssetFormat;
         const selected=downloadScales(format,Array.from(panel.querySelectorAll('.asset-scale input:checked:not(:disabled)')).map((i:HTMLInputElement)=>Number(i.value)));
         const status=panel.querySelector('.asset-status') as HTMLElement;
-        if(!selected.length){status.textContent='请至少选择一个尺寸';return;}
+        if(!selected.length){status.textContent=localize("Select at least one size");return;}
         const controls=Array.from(panel.querySelectorAll('input,select,button')) as (HTMLInputElement|HTMLSelectElement|HTMLButtonElement)[];
         const wasDisabled=controls.map(c=>c.disabled);
         controls.forEach(c=>c.disabled=true);
         try {
             const files:{name:string;bytes:Uint8Array}[]=[];
             for(const scale of selected) {
-                status.textContent='正在生成 '+scale+'x…';
+                status.textContent=localize('Generating %@x…',scale);
                 const blob=await encodeAsset(source,scale,format);
                 files.push({name:filename(source.name,platform,scale,format),bytes:new Uint8Array(await blob.arrayBuffer())});
             }
@@ -116,8 +116,8 @@ function assetDownloadEvents() {
             } else {
                 downloadBlob(zipFiles(files),filename(source.name,platform,1,'png').split('/').pop().replace(/\.png$/,'')+'-'+platform+'-'+format+'.zip');
             }
-            status.textContent='已生成下载文件';
-        } catch(error) {status.textContent=error.message || '下载失败，请选择其他格式重试';}
+            status.textContent=localize("Download ready");
+        } catch(error) {status.textContent=error.message || localize("Download failed. Try another format.");}
         finally {controls.forEach((c,i)=>c.disabled=wasDisabled[i]);}
     });
 }
