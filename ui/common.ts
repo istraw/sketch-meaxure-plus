@@ -8,6 +8,7 @@ interface State {
     artboardIndex: number,
     colorFormat: string,
     showSliceBounds: boolean,
+    currentPageSlicesOnly: boolean,
     current: ArtboardData,
     selectedIndex: number,
     codeType: string,
@@ -22,6 +23,7 @@ export const state: State = <State>{
     artboardIndex: undefined,
     colorFormat: 'color-hex',
     showSliceBounds: false,
+    currentPageSlicesOnly: false,
     current: undefined,
     codeType: 'css',
 }
@@ -44,6 +46,7 @@ export function init(data: ProjectData): void {
     state.colorFormat = data.colorFormat;
     state.unit = data.unit;
     state.showSliceBounds = false;
+    state.currentPageSlicesOnly = false;
     lang = normalizeLangCode(data.language || navigator.language);
     I18N = data.languages || {};
     project = data;

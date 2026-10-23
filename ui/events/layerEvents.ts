@@ -51,7 +51,7 @@ export function layerEvents() {
     });
 }
 
-function selectLayerByIndex(index: number) {
+export function selectLayerByIndex(index: number) {
     state.selectedIndex = index;
     hideDistance();
     mouseoutLayer();

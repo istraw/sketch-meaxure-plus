@@ -113,8 +113,11 @@
     {
       "name": "Init",
       "identifier": "commandInit",
+      "scope": "application",
       "handlers": {
+        "run": "commandInit",
         "actions": {
+          "Startup": "commandInit",
           "OpenDocument": "commandInit"
         }
       },

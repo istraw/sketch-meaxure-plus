@@ -194,5 +194,7 @@
   "Copy failed": "複製失敗",
   "Target artboard not exported.": "目標畫板未匯出。",
   "X": "X",
+  "Only show slices on current page": "僅顯示目前頁面切圖",
+  "No slices on current page": "目前頁面暫無切圖",
   "Y": "Y"
 }

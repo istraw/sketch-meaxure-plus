@@ -193,3 +193,12 @@ Asset controls use subtle dark borders, dividers and preview checkerboards to ma
 ## Bilingual viewer included in v2026.3.1
 
 Slice bounds, asset download controls, preview labels, format help, download status and errors now follow the selected language. English, Simplified Chinese and Traditional Chinese dictionaries include these strings. Existing copy and navigation messages also have Chinese translations. Regenerate existing specs after selecting the desired plugin language. This update replaces the existing v2026.3.1 package.
+
+
+## System-language menus and slice navigation (v2026.3.2)
+
+Plugin menus follow the macOS/Sketch preferred language independently of document language settings. Initialization works without an open document, updates command models and submenu titles, and synchronizes the installed manifest so bundle reloads retain the translated labels. Unchanged initialization does not rewrite the manifest. No persistent native notification callback is used.
+
+The spec viewer adds a switch to show only slices used by the current artboard. The filtered list updates during navigation and includes localized empty states. Clicking a slice on another artboard navigates to that artboard, selects the matching layer, and opens its inspector.
+
+Validation: the full regression suite and production plugin build pass. Native initialization and repeated menu checks confirm Chinese titles remain in place. Regenerate existing specs to use the new viewer controls.

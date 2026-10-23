@@ -1,6 +1,7 @@
 import { project, state, localize } from "../common";
 import { layers, MapArtboardIDToIndex } from "../render/layers";
 import { notes } from "../render/notes";
+import { slices } from "../render/slices";
 import { message } from "../render/helper";
 import { updateScreen } from "../render/screen";
 import { flowMode, setFlowMode } from "./flow";
@@ -30,6 +31,7 @@ export function gotoArtboard(para: number | string, updateHash: boolean = true):
     updateScreen(true);
     layers();
     notes();
+    if (state.currentPageSlicesOnly) slices();
     document.querySelectorAll('.active').forEach(e => e.classList.remove('active'));
     document.querySelector('#artboard-' + index)?.classList.add('active');
     document.querySelector('#startpoint-' + index)?.classList.add('active');

@@ -7,6 +7,7 @@
 <a name="english"></a>
 ## English
 ### 🚀 Key Updates
+* 2026.3.2: plugin menus follow the system language across reloads; filter slices to the current artboard and navigate directly to slices on other artboards.
 * 2026.3.1: use Sketch-rendered PNG sources for spec previews and bitmap downloads to preserve slice appearance. Re-export existing specs to apply the fix.
 * Spec Export 2026.3: replace the legacy native request builder, cache Symbol lookups and inherited layer states; isolate temporary projections in a hidden document. See [export patch notes](docs/export-2026.3.md).
 * Full Compatibility: Now fully supports Sketch 2026.1.1.
@@ -33,6 +34,7 @@ Since the original project is no longer actively maintained, I have taken over t
 <a name="中文"></a>
 ## 中文
 ### 🚀 核心更新
+* 2026.3.2：插件菜单稳定跟随系统语言；支持仅显示当前画板切图，点击其他画板的切图可直接跳转定位。
 * 2026.3.1：标注预览和位图下载改用 Sketch 原生 PNG 源，修复切图效果与 Sketch 直接导出不一致的问题；旧标注需重新导出。
 * 2026.3 标注导出修复：替换旧版原生导出接口，缓存 Symbol 查找与图层父级状态，并将临时投影放入隐藏文档以减少源文档更新。详见[导出修复说明](docs/export-2026.3.md)。
 * 版本兼容：现已全面支持 Sketch 2026.1.1 及更高版本。

@@ -38,6 +38,13 @@ export function localize(str: string, ...data) {
     });
 }
 
+// App menus follow macOS/Sketch's preferred language, independently of the
+// language selected for a document's panels and exported specs.
+export function localizeSystem(str: string): string {
+    let language = loadLanguage(getSystemLangCode());
+    return language && language[str] || str;
+}
+
 function loadLanguage(code: string): Object | null {
     if (!code) return null;
     if (caches[code] !== undefined) {
@@ -55,14 +62,16 @@ export function getLangCode(): string {
     let configured = getConfiguredLangCode();
     if (configured) return configured;
 
-    let sysLanguage = String(NSUserDefaults.standardUserDefaults().objectForKey("AppleLanguages").objectAtIndex(0)).toLowerCase();
-    for (let key of Object.keys(aliases)) {
-        let lkey = key.toLowerCase();
-        if (sysLanguage.startsWith(lkey)) {
-            return aliases[key];
-        }
-    }
-    return "";
+    return getSystemLangCode();
+}
+
+export function getSystemLangCode(): string {
+    let languages = NSUserDefaults.standardUserDefaults().objectForKey("AppleLanguages");
+    if (!languages || !languages.count()) return 'en';
+    let language = String(languages.objectAtIndex(0)).toLowerCase().replace(/_/g, '-');
+    if (/^zh-(hant|tw|hk|mo)(-|$)/.test(language)) return 'zh-tw';
+    if (/^zh(-|$)/.test(language)) return 'zh-cn';
+    return 'en';
 }
 
 function getConfiguredLangCode(): string {

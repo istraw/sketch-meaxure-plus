@@ -1023,6 +1023,23 @@ main {
     list-style: none;
 }
 
+.slice-filter {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px;
+    background: #242627;
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+}
+
+.slice-filter .slidebox {
+    flex-shrink: 0;
+}
+
 .artboard-list li {
     padding: 16px;
     display: flex;

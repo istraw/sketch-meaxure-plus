@@ -21,7 +21,7 @@ import { renameOldMarkers } from "./meaxure/helpers/renameOldMarkers";
 import { runScript } from "./meaxure/runScript";
 import { localizePluginMenu } from "./meaxure/common/menuLocalization";
 
-export function commandInit(context) { updateContext(context); localizePluginMenu(); return false; }
+export function commandInit(context) { localizePluginMenu(getContextPlugin(context)); return false; }
 export function commandSettings(context?) { runAndCatch(settingsPanel, context); }
 export function commandToolbar(context) { runAndCatch(markToolbar, context); }
 export function commandOverlays(context?) { runAndCatch(markOverlays, context); }
@@ -51,10 +51,16 @@ export function commandRunScript(context?) { runAndCatch(runScript, context); }
 export function linkFeedback(context?) { runAndCatch(openURL, context, "https://github.com/istraw/sketch-meaxure-plus/issues"); }
 export function linkHome(context?) { runAndCatch(openURL, context, "https://github.com/istraw/sketch-meaxure-plus"); }
 
+function getContextPlugin(context) {
+    if (!context) return undefined;
+    // Action contexts can expose the bundle through the command instead.
+    return context.plugin || (context.command && context.command.pluginBundle());
+}
+
 function runAndCatch(fn: Function, context, ...args) {
     try {
         updateContext(context);
-        localizePluginMenu();
+        localizePluginMenu(getContextPlugin(context));
         let returns = fn(...args);
         if (returns instanceof Promise) {
             returns.catch(error => showError(error))

@@ -1,13 +1,16 @@
-import { project } from "../common";
+import { project, state, localize } from "../common";
 import { unitSize, getLayerRect } from "./helper";
 
 export function slices() {
-    if (!project.slices) {
-        return false;
-    }
+    const currentSliceIDs = new Set(state.current && state.current.layers
+        .filter(layer => layer.exportable && layer.exportable.length > 0)
+        .map(layer => layer.objectID));
+    const visibleSlices = (project.slices || []).filter(sliceLayer =>
+        sliceLayer.exportable.length > 0 &&
+        (!state.currentPageSlicesOnly || currentSliceIDs.has(sliceLayer.objectID)));
     var sliceListHTML = [];
     sliceListHTML.push('<ul class="asset-list">');
-    project.slices.forEach(sliceLayer => {
+    visibleSlices.forEach(sliceLayer => {
         if (sliceLayer.exportable.length > 0) {
             let rect = getLayerRect(sliceLayer as any);
             var asset = JSON.parse(JSON.stringify(sliceLayer.exportable)).pop();
@@ -22,7 +25,7 @@ export function slices() {
         }
     });
     sliceListHTML.push('</ul>');
-    if (project.slices.length > 0) {
-        document.querySelector('#slices').innerHTML = sliceListHTML.join('');
-    }
+    document.querySelector('#slice-list').innerHTML = visibleSlices.length > 0
+        ? sliceListHTML.join('')
+        : `<div class="empty">${localize(state.currentPageSlicesOnly ? 'No slices on current page' : 'No slices added!')}</div>`;
 }

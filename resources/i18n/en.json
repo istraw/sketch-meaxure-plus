@@ -57,5 +57,7 @@
   "Copy failed": "Copy failed",
   "Target artboard not exported.": "Target artboard not exported.",
   "X": "X",
+  "Only show slices on current page": "Only show slices on current page",
+  "No slices on current page": "No slices on current page",
   "Y": "Y"
 }
