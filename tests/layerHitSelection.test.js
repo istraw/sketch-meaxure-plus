@@ -44,4 +44,21 @@ assert.strictEqual(click(1, 120, 350), 0, 'moving to another point starts a new 
 state.current.layers.push({ type: 'text', rect });
 listeners.click({ target: { classList: { contains: () => false } } });
 assert.strictEqual(click(), 5, 'text retains its existing priority over slices');
-console.log('PASS: overlapping slices select before shapes, cycle through all hits, reset after movement/clearing and preserve text priority at 2x resolution');
+state.current.layers = [
+    { type: 'shape', name: '矩形 2', rect: { x: 0, y: 378, width: 375, height: 40 } },
+    { type: 'shape', name: '开户按钮', rect: { x: 300, y: 388, width: 60, height: 24 } },
+    { type: 'text', name: '去开户', rect: { x: 310, y: 392, width: 40, height: 16 } }
+];
+listeners.click({ target: { classList: { contains: () => false } } });
+assert.strictEqual(click(0, 252.5, 245), 1, 'button padding selects the smaller button rectangle even when the banner is the DOM target');
+assert.strictEqual(click(0, 253.5, 246), 0, 'slight pointer jitter still cycles to the banner');
+assert.strictEqual(click(0, 252, 245.5), 1, 'cycling returns to the button rectangle');
+assert.strictEqual(click(0, 260, 250), 2, 'button label retains text priority');
+assert.strictEqual(click(0, 261, 251), 1, 'clicking the label again with pointer jitter reaches the button bounds');
+assert.strictEqual(click(0, 260, 250), 0, 'another click reaches the outer banner');
+assert.strictEqual(click(0, 270, 250), 2, 'moving beyond the tolerance restarts selection');
+state.zoom = 0.5;
+listeners.click({ target: { classList: { contains: () => false } } });
+assert.strictEqual(click(0, 180, 150), 2, 'hit coordinates respect zoom and resolution');
+assert.strictEqual(click(0, 181, 151), 1, 'pointer tolerance also respects zoom and resolution');
+console.log('PASS: overlapping layers prioritize text, slices and smaller shapes, cycle with pointer jitter, and reset after movement/clearing at different zoom levels');

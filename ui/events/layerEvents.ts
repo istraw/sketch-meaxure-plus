@@ -7,6 +7,7 @@ import { panMode } from "./panMode";
 import { getLayerRect } from "../render/helper";
 
 let lastHitSignature = '';
+let lastHitPoint: { x: number, y: number };
 
 export function layerEvents() {
     document.body.addEventListener('click', function (event) {
@@ -75,16 +76,21 @@ function getNextHitLayerIndex(event: MouseEvent, fallbackIndex: number): number 
 
     if (!hitIndices.length) return fallbackIndex;
     if (hitIndices.length === 1) {
-        lastHitSignature = buildHitSignature(point, hitIndices);
+        lastHitSignature = hitIndices.join(',');
+        lastHitPoint = point;
         return hitIndices[0];
     }
 
     let topIndex = hitIndices[0];
     let topLayer = state.current.layers[topIndex];
 
-    let signature = buildHitSignature(point, hitIndices);
-    if (signature !== lastHitSignature || state.selectedIndex === undefined) {
+    let signature = hitIndices.join(',');
+    // Keep cycling through overlapping layers despite a little pointer jitter.
+    let tolerance = 4 * project.resolution / state.zoom;
+    let samePoint = lastHitPoint && Math.hypot(point.x - lastHitPoint.x, point.y - lastHitPoint.y) <= tolerance;
+    if (signature !== lastHitSignature || !samePoint || state.selectedIndex === undefined) {
         lastHitSignature = signature;
+        lastHitPoint = point;
         if (hitIndices.includes(fallbackIndex)) {
             let fallbackLayer = state.current.layers[fallbackIndex];
             if (shouldPreferTopHitOnInitialSelection(topLayer, fallbackLayer)) {
@@ -119,10 +125,6 @@ function containsPoint(rect: SMRect, point: { x: number, y: number }): boolean {
         && point.y <= rect.y + rect.height;
 }
 
-function buildHitSignature(point: { x: number, y: number }, hitIndices: number[]): string {
-    return `${Math.round(point.x)}:${Math.round(point.y)}:${hitIndices.join(',')}`;
-}
-
 function compareHitLayer(a: any, b: any, aIndex: number, bIndex: number): number {
     let priorityDiff = getLayerClickPriority(a) - getLayerClickPriority(b);
     if (priorityDiff !== 0) return priorityDiff;
@@ -149,7 +151,8 @@ function getLayerArea(layer: any): number {
 
 function shouldPreferTopHitOnInitialSelection(topLayer: any, fallbackLayer: any): boolean {
     if (!topLayer || !fallbackLayer) return false;
-    return getLayerClickPriority(topLayer) < getLayerClickPriority(fallbackLayer);
+    let priorityDiff = getLayerClickPriority(topLayer) - getLayerClickPriority(fallbackLayer);
+    return priorityDiff < 0 || (priorityDiff === 0 && getLayerArea(topLayer) < getLayerArea(fallbackLayer));
 }
 
 function hasInspectableStackStyle(layer: any): boolean {

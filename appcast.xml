@@ -7,7 +7,7 @@
     <language>en</language>
     <item>
       <title>2026.3.3</title>
-      <description>Fix displaced slice selection boxes by converting native document coordinates to artboard coordinates. Restore slice selection priority and repeated-click cycling through overlapping layers. Update the plugin and re-export existing specs.</description>
+      <description>Fix displaced slice selection boxes by converting native document coordinates to artboard coordinates. Restore slice selection priority, prefer smaller button rectangles over overlapping backgrounds, and tolerate pointer jitter when cycling through overlapping layers. Update the plugin and re-export existing specs.</description>
       <enclosure url="https://github.com/istraw/sketch-meaxure-plus/releases/download/v2026.3.3/sketch-meaxure-plus.sketchplugin.zip" sparkle:version="2026.3.3" type="application/octet-stream"/>
     </item>
     <item>
