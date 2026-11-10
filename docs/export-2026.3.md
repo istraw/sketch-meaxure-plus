@@ -202,3 +202,14 @@ Plugin menus follow the macOS/Sketch preferred language independently of documen
 The spec viewer adds a switch to show only slices used by the current artboard. The filtered list updates during navigation and includes localized empty states. Clicking a slice on another artboard navigates to that artboard, selects the matching layer, and opens its inspector.
 
 Validation: the full regression suite and production plugin build pass. Native initialization and repeated menu checks confirm Chinese titles remain in place. Regenerate existing specs to use the new viewer controls.
+
+
+## Slice selection coordinates and overlapping layers (v2026.3.3)
+
+Native slice export requests use document coordinates. Convert request and trimming rectangles to the exported artboard coordinate space before creating viewer selection boxes, and reject invalid candidates in favor of the measured layer frame. Native asset crop coordinates remain unchanged. This fixes selection boxes displaced by a nonzero artboard origin.
+
+Remove the early DOM-target return that bypassed slice priority and interrupted repeated-click cycling. Slices can be selected over overlapping shapes, repeated clicks reach the other inspectable layers, and text retains its existing priority.
+
+Validation: automated regressions cover the reported 79×30 artboard offset, distant and negative origins, ordinary/projected slices, trimming, invalid requests, overlap cycling, selection reset, and 2x resolution. The full test suite and production build pass. A native spec-writer run on a disposable document copy completed all four selected artboards; the reported slice's display rectangle now matches its 17×296 position and 40×40 size. Browser inspection confirmed the selected slice, preview, and download controls.
+
+Install the complete plugin update and re-export existing specs. Updating the plugin does not change HTML files already exported.

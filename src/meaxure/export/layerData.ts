@@ -107,7 +107,7 @@ function getLayerData2(artboard: Artboard, layer: Layer, data: ArtboardData, byI
     if (layerType == SMType.text) {
         layerData.displayRect = safeValue(layer, 'get display rect', () => getDisplayRect(layer as Text, artboard, layerRect), layerRect);
     } else if (layerType == SMType.slice) {
-        let sliceRect = safeValue(layer, 'get slice display rect', () => getSliceDisplayRect(layer, layerRect), layerRect);
+        let sliceRect = safeValue(layer, 'get slice display rect', () => getSliceDisplayRect(layer, layerRect, artboard), layerRect);
         if (shouldUseDisplayRectAsSliceBounds(layer, layerRect, sliceRect)) {
             layerData.rect = sliceRect;
         }
@@ -617,7 +617,7 @@ function getDisplayRect(text: Text, artboard: Artboard, fallbackRect: SMRect): S
     return fallbackRect;
 }
 
-function getSliceDisplayRect(layer: Layer, fallbackRect: SMRect): SMRect {
+function getSliceDisplayRect(layer: Layer, fallbackRect: SMRect, artboard: Artboard): SMRect {
     let aliasRect = getSliceAliasSymbolRect(layer, fallbackRect);
     if (aliasRect) return normalizeRect(aliasRect);
 
@@ -627,26 +627,38 @@ function getSliceDisplayRect(layer: Layer, fallbackRect: SMRect): SMRect {
         return normalizeRect(sourceDisplayRect);
     }
     let nativeOptions = getSliceNativeExportOptions(layer, sourceLayer, 0, fallbackRect);
+    // Renderer requests use document coordinates, while viewer rectangles are
+    // relative to the exported artboard (including scratch projection hosts).
+    // Convert only annotation geometry; keep the native asset crop unchanged.
+    let origin = getProjectedAbsoluteRect(artboard);
+    const toLocalRect = (rect?: SMRect): SMRect | undefined => rect && origin ? normalizeRect({
+        x: rect.x - origin.x,
+        y: rect.y - origin.y,
+        width: rect.width,
+        height: rect.height,
+    }) : undefined;
+    let request = getNativeExportRequestAt(layer);
+    let requestRect = toLocalRect(nativeValueToRect(hasNativeMethod(request, "rect") ? request.rect() : undefined));
+    let fallbackDisplayRect = requestRect && isValidSliceDisplayRectCandidate(fallbackRect, requestRect)
+        ? requestRect : fallbackRect;
     if (sourceLayer && nativeOptions && nativeOptions.requestRect) {
-        let requestRect = normalizeRect(nativeOptions.requestRect);
-        if (isValidSliceDisplayRectCandidate(fallbackRect, requestRect)) {
+        if (requestRect && isValidSliceDisplayRectCandidate(fallbackRect, requestRect)) {
             return requestRect;
         }
     }
 
     let nativeLayer = (layer as any).sketchObject;
     if (!nativeLayer || typeof MSExportRequest === "undefined" || typeof MSSliceTrimming === "undefined") {
-        return nativeOptions && nativeOptions.requestRect ? normalizeRect(nativeOptions.requestRect) : fallbackRect;
+        return fallbackDisplayRect;
     }
 
-    let request = getNativeExportRequestAt(layer);
     if (!request) {
-        return nativeOptions && nativeOptions.requestRect ? normalizeRect(nativeOptions.requestRect) : fallbackRect;
+        return fallbackDisplayRect;
     }
 
     let ancestry = hasNativeMethod(request, "layerAncestry") ? request.layerAncestry() : undefined;
     if (!ancestry) {
-        return nativeOptions && nativeOptions.requestRect ? normalizeRect(nativeOptions.requestRect) : fallbackRect;
+        return fallbackDisplayRect;
     }
 
     let shouldTrim = typeof nativeOptions?.shouldTrim == "boolean"
@@ -654,22 +666,17 @@ function getSliceDisplayRect(layer: Layer, fallbackRect: SMRect): SMRect {
         : hasNativeMethod(request, "shouldTrim") ? !!request.shouldTrim() : false;
     let candidates: SMRect[] = [];
 
-    if (nativeOptions && nativeOptions.requestRect) {
-        candidates.push(normalizeRect(nativeOptions.requestRect));
-    }
-
-    let requestRect = nativeValueToRect(hasNativeMethod(request, "rect") ? request.rect() : undefined);
     if (requestRect) candidates.push(requestRect);
 
-    let ancestryRect = getNativeSliceRect("rectForLayerAncestry_withTrimming", ancestry, shouldTrim);
+    let ancestryRect = toLocalRect(getNativeSliceRect("rectForLayerAncestry_withTrimming", ancestry, shouldTrim));
     if (ancestryRect) candidates.push(ancestryRect);
 
     if (!shouldTrim) {
-        let safeRect = getNativeSliceRect("safeRectForLayerAncestry", ancestry);
+        let safeRect = toLocalRect(getNativeSliceRect("safeRectForLayerAncestry", ancestry));
         if (safeRect) candidates.push(safeRect);
     }
 
-    let trimmedRect = getNativeSliceRect("trimmedRectForLayerAncestry", ancestry);
+    let trimmedRect = toLocalRect(getNativeSliceRect("trimmedRectForLayerAncestry", ancestry));
     if (trimmedRect) candidates.push(trimmedRect);
 
     let bestRect = pickBestSliceDisplayRect(fallbackRect, candidates);

@@ -83,11 +83,6 @@ function getNextHitLayerIndex(event: MouseEvent, fallbackIndex: number): number 
     let topLayer = state.current.layers[topIndex];
 
     let signature = buildHitSignature(point, hitIndices);
-    if (hitIndices.includes(fallbackIndex) && fallbackIndex !== state.selectedIndex) {
-        lastHitSignature = signature;
-        return fallbackIndex;
-    }
-
     if (signature !== lastHitSignature || state.selectedIndex === undefined) {
         lastHitSignature = signature;
         if (hitIndices.includes(fallbackIndex)) {
